@@ -130,8 +130,8 @@ IF SOMETHING DOESN'T WORK
 
 THEMES
   Pick a look from the "Theme" menu at the top right: Light, Dark, or styles
-  inspired by Deadlock, Overwatch, Destiny 2, No Man's Sky, Sea of Thieves and
-  Cyberpunk 2077 (colours and feel only - no game logos or artwork).
+  inspired by Overwatch, Destiny 2, No Man's Sky and Cyberpunk 2077 (colours
+  and feel only - no game logos or artwork).
 
 NOTE
   Windows still sees ONE monitor. This app places windows exactly into three
