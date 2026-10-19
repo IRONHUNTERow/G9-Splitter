@@ -1,0 +1,131 @@
+G9 SPLITTER 2  -  Left | Game | Right, with game-style themes
+============================================================
+
+This is the main version, with menus that look like the games. The simpler
+original is in the "classic" folder. Don't run both at the same time - they
+would fight over the same hotkeys and windows.
+
+START IT
+  Double-click "Start G9 Splitter 2.bat".
+  The first time it may install Python 3.12 and a small free add-on called
+  pywebview (it gives the app its own window). That needs internet once.
+  After the first start there's a "G9 Splitter 2" shortcut with the logo in
+  this folder, and the app has a "Desktop shortcut" button.
+
+USING IT
+  - Drag a program from "Open windows" onto LEFT, GAME or RIGHT in the layout.
+    Games dropped in the middle go to GAME (no border), other apps to Middle.
+    Shift or Esc cancels a drag.
+  - Programs already placed show up inside the boxes. Drag them between boxes,
+    or click the x to turn them back into normal windows.
+  - Moving windows around normally on your monitor never snaps them.
+  - "Remembered apps" are placed automatically every time they open.
+  - Closing the app window keeps G9 Splitter 2 running in the tray (see below).
+
+THEMES
+  Pick one from the Theme menu at the top: Light, Dark, or styles inspired by
+  Deadlock, Overwatch, Destiny 2, No Man's Sky, Sea of Thieves and
+  Cyberpunk 2077. Each has its own fonts, shapes and menu style (no game logos
+  or artwork). The fonts are free Google Fonts look-alikes downloaded while
+  you're online; offline the app uses Windows fonts instead.
+
+  Every theme uses the modern layout: a 3D curved monitor, tabs (Windows /
+  Remembered / Settings), real program icons, live previews of your windows
+  and pop-up notifications - each in its own game style. (Games never get a
+  live preview - asking a game to draw one could make it stutter - they show
+  their icon instead.)
+
+GAME SETUP (same as before)
+  1. In the game choose WINDOWED mode at 2560 x 1440.
+  2. Drag it onto GAME. It covers the taskbar while you play.
+  3. Alt+Tab / Windows key = normal desktop. Click the game to go back.
+
+ANY MONITOR, ANY SHAPE
+  G9 Splitter works on any monitor - 32:9 like the G9, 21:9, 16:9, 16:10...
+  Pick the monitor at the top; the preview takes its shape. Settings for the
+  game area:
+    Game area      its shape: 16:9, 16:10, 3:2, 4:3, 5:4, 1:1, 21:9, 24:10 or
+                   32:9 (or Custom for an exact size). The shape is kept on any
+                   monitor - if it's too wide it shrinks until it fits.
+    Height         full height, or 95% ... 50% of the monitor.
+    Position       in the middle, or at the left / right edge (one big side
+                   screen instead of two).
+    If shorter     put a shorter game area at the top, centred or at the bottom.
+    Monitor in the preview: curved or flat (automatic = curved if it's an
+    ultrawide).
+
+GAME OPTIONS
+  "When a new game is recognised": put it in GAME (no border), in Middle (keeps
+  its border), or leave it alone (ignore - e.g. to play it full screen).
+  "Lock the mouse to new games" sets whether new games get the mouse lock.
+
+TRAY, START WITH WINDOWS AND UPDATES
+  G9 Splitter has an icon in the tray (next to the clock). Click it to open the
+  window, right-click it to quit. Closing the window keeps it running there.
+  "Start with Windows" starts it in the tray as soon as you sign in (it uses a
+  Windows sign-in task, which starts much sooner than the usual startup list -
+  Windows asks once for permission; if you say no, the normal list is used).
+  Updates install themselves: when new files are put in this folder, the app
+  restarts by itself a few seconds later with the new version.
+
+GAME OR MIDDLE?
+  The middle spot has two modes, and the app picks the right one for you:
+    GAME    for games - no border, covers the taskbar while you play.
+    Middle  for everyday apps (browsers like Opera GX, Discord, etc.) - keeps
+            its border and stops just above the taskbar.
+  Drag anything onto the middle box (or press Ctrl+Alt+Up) and games go to
+  GAME, everything else to Middle. Hold Ctrl while dropping to always use
+  Middle. Clicking the GAME or Middle button yourself is remembered for that
+  program next time.
+
+GAMES ARE RECOGNISED AUTOMATICALLY
+  Launch any game and G9 Splitter spots it (from where it's installed - Steam,
+  Epic, Riot, Battle.net, EA, Ubisoft, GOG, Xbox, Rockstar - its game engine,
+  or Windows' own list of games). A few seconds later it's put in the middle
+  with no border and saved in Remembered apps as "auto-detected game".
+  Launchers and helper programs are ignored.
+  - Wrong guess? Remove it from Remembered apps - it won't be picked again.
+  - If a game keeps snapping back to full width, the app stops and tells you
+    to set the game to Windowed at the game-area size.
+  - Turn it off with "Recognise games automatically".
+
+IGNORE A PROGRAM (e.g. a game you want in real full screen)
+  Select it in the Windows tab and click "Ignore". G9 Splitter then leaves it
+  completely alone: it's never moved, resized, recognised as a game, put on
+  top or mouse-locked, so you can run it full screen across the whole monitor.
+  If it was in GAME it gets its border and old size back.
+  You can also remember a program as ignored: pick "Ignored (full screen)"
+  in the Remembered tab and click "Remember selected" (or click "Remember
+  selected" on a program you've ignored).
+  Ignored programs are listed in the Remembered tab - click x to stop
+  ignoring one. Placing it somewhere yourself also stops ignoring it.
+
+MUTE A PROGRAM
+  Every window in the Windows tab has a speaker button. Click it to mute that
+  program (click again for sound back on). Red = muted, faded = it isn't
+  making sound right now. It uses Windows' own volume mixer, so it mutes the
+  whole program (all its windows) on every speaker and headset, and keeps it
+  muted if it starts new sound later. Unmuting it in Windows' volume mixer
+  works too.
+
+HOTKEYS
+  Ctrl+Alt+Up      current window to the middle (GAME if it's a game, else Middle)
+  Ctrl+Alt+Left    current window to the left screen
+  Ctrl+Alt+Right   current window to the right screen
+  Ctrl+Alt+Down    back to a normal window
+  Ctrl+Alt+L       lock / unlock the mouse to the current window
+  Ctrl+Alt+F       FPS counter on / off
+
+FPS COUNTER
+  Tick "FPS counter" (or press Ctrl+Alt+F). It shows the frame rate in the
+  top-left corner of the game in the middle (borderless), only while you're in
+  the game. It uses Intel's free PresentMon tool (downloaded automatically the
+  first time) which reads Windows' own frame timing - nothing is injected into
+  the game, so it's safe with anti-cheat. Windows only allows this with admin
+  rights: if it says "-- FPS", click "Restart as admin".
+
+IF SOMETHING DOESN'T WORK
+  - If the add-on couldn't install, the app opens in a Microsoft Edge window
+    instead - it works the same.
+  - Game won't move: click "Restart as admin".
+  - Errors are written to g9_splitter_error.log in this folder.

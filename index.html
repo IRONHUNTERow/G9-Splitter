@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>G9 Splitter</title>
+<link rel="icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya:wght@400;700&family=Alegreya+Sans:wght@400;500;700&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@300;400;600&family=Cinzel:wght@500;700&family=Exo+2:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Orbitron:wght@500;700&family=Pirata+One&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Teko:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body data-theme="dark" data-host="browser">
+<div class="bgfx" aria-hidden="true"></div>
+
+<header class="titlebar">
+  <img class="logo pywebview-drag-region" src="/logo.png" alt="">
+  <div class="brand pywebview-drag-region">
+    <div class="brand-name" data-text="G9 SPLITTER">G9 SPLITTER</div>
+    <div class="brand-sub">Left &middot; Game &middot; Right</div>
+  </div>
+  <div class="brand-deco pywebview-drag-region" aria-hidden="true"><i></i><i></i><i></i></div>
+  <label class="theme-pick">
+    <span>Theme</span>
+    <select id="theme"></select>
+  </label>
+  <div class="winbtns">
+    <button id="btn-min" title="Minimize">&#8212;</button>
+    <button id="btn-max" title="Maximize">&#9633;</button>
+    <button id="btn-close" title="Close">&#10005;</button>
+  </div>
+</header>
+
+<main>
+  <section class="panel layout-panel">
+    <h2><span>Layout</span></h2>
+    <div class="layout-controls">
+      <label class="field"><span>Monitor</span><select id="monitor"></select></label>
+      <label class="field"><span>Game area</span><select id="preset"></select></label>
+      <label class="field small"><span>Width</span><input id="cw" type="number" min="200" step="10"></label>
+      <label class="field small"><span>Height</span><input id="ch" type="number" min="200" step="10"></label>
+      <button id="apply-size"><span>Apply</span></button>
+      <div class="spacer"></div>
+      <button id="show-zones"><span>Show zones on my monitor</span></button>
+    </div>
+    <div class="layout-more">
+      <label class="field"><span>Game area height</span><select id="game-height"></select></label>
+      <label class="field"><span>Game area position</span><select id="game-pos"></select></label>
+      <label class="field"><span>If it's shorter than the monitor</span><select id="game-valign"></select></label>
+      <label class="field"><span>Monitor in the preview</span><select id="mon-shape"><option value="auto">Automatic (curved if ultrawide)</option><option value="curved">Curved</option><option value="flat">Flat</option></select></label>
+      <div class="layout-info" id="layout-info"></div>
+    </div>
+    <div class="stage" id="stage">
+      <div class="monframe" id="monframe" aria-hidden="true"></div>
+      <div class="taskbar" id="taskbar"></div>
+      <div class="zone" data-zone="left"><div class="zone-head"><b>Left screen</b><em></em></div><div class="chips"></div><div class="drop-hint">Drop here</div></div>
+      <div class="zone" data-zone="center"><div class="zone-head"><b>Middle</b><em></em></div><div class="chips"></div><div class="empty-hint">Drag your game here</div><div class="drop-hint">Drop here</div></div>
+      <div class="zone" data-zone="right"><div class="zone-head"><b>Right screen</b><em></em></div><div class="chips"></div><div class="drop-hint">Drop here</div></div>
+    </div>
+    <div class="toggles">
+      <label class="switch"><input type="checkbox" id="opt-ontop"><i></i><span>Game covers the taskbar while you're playing</span></label>
+      <label class="switch"><input type="checkbox" id="opt-auto"><i></i><span>Auto-place remembered apps</span></label>
+      <label class="switch" title="Any game you launch is put in the middle (no border) and remembered"><input type="checkbox" id="opt-detect"><i></i><span>Recognise games automatically</span></label>
+      <label class="switch" title="Shows the frame rate on the borderless window in the middle while you're in it (Ctrl+Alt+F)"><input type="checkbox" id="opt-fps"><i></i><span>FPS counter</span></label>
+      <div class="game-options">
+        <h3>Game options</h3>
+        <label class="field"><span>When a new game is recognised</span><select id="new-game"></select></label>
+        <label class="switch"><input type="checkbox" id="opt-new-lock"><i></i><span>Lock the mouse to new games</span></label>
+      </div>
+      <span class="tip">Tip: games dropped in the middle go borderless (GAME), other apps keep their border (Middle) &middot; <kbd>Ctrl</kbd> always keeps the border &middot; <kbd>Shift</kbd> cancels</span>
+    </div>
+  </section>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="windows"><span>Windows</span><em id="count-windows"></em></button>
+    <button data-tab="rules"><span>Remembered</span><em id="count-rules"></em></button>
+    <button data-tab="settings"><span>Settings</span></button>
+    <i class="tab-ink" aria-hidden="true"></i>
+  </nav>
+
+  <div class="cols">
+    <section class="panel windows-panel">
+      <h2><span>Open windows</span></h2>
+      <div class="list-tools">
+        <input id="search" type="search" placeholder="Search...">
+        <button id="refresh" title="Refresh"><span>&#8635;</span></button>
+      </div>
+      <div class="list" id="winlist"></div>
+      <div class="sel-info"></div>
+      <div class="actions">
+        <button data-place="left"><span>&#9664; Left</span></button>
+        <button data-place="center" data-borderless="1" title="For games: no border, covers the taskbar"><span>GAME</span></button>
+        <button data-place="center" title="For everyday apps: keeps its border, stops above the taskbar"><span>Middle</span></button>
+        <button data-place="right"><span>Right &#9654;</span></button>
+        <button id="restore"><span>Restore</span></button>
+        <button id="win-ignore" data-needs-sel title="Leave this program completely alone - it's never moved, resized or put on top, so it can run full screen"><span>&#8856; Ignore</span></button>
+        <button id="win-remember" class="remember-btn" data-needs-sel title="Remember this window in the spot it's in now - it goes there automatically every time it opens"><span>&#9733; Remember selected</span></button>
+      </div>
+    </section>
+
+    <section class="panel rules-panel">
+      <h2><span>Remembered apps</span></h2>
+      <div class="list" id="rulelist"></div>
+      <div class="sel-info"></div>
+      <div class="rule-add">
+        <select id="rule-where"></select>
+        <label class="check"><input type="checkbox" id="rule-lock" checked><i></i><span>Lock mouse</span></label>
+        <button id="rule-add" class="primary" data-needs-sel><span>Remember selected</span></button>
+      </div>
+    </section>
+
+    <section class="panel settings-panel">
+      <h2><span>Settings</span></h2>
+      <div class="settings-body" id="settings-body"></div>
+    </section>
+  </div>
+
+  <section class="panel help-panel">
+    <div class="keys">
+      <div><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>&uarr;</kbd> to the middle (GAME for games)</div>
+      <div><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd> side screens</div>
+      <div><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>&darr;</kbd> back to normal</div>
+      <div><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>L</kbd> lock mouse</div>
+      <div><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>F</kbd> FPS counter</div>
+      <div><kbd>Alt</kbd><kbd>Tab</kbd> normal desktop &middot; click the game to go back</div>
+    </div>
+    <div class="opts">
+      <label class="switch"><input type="checkbox" id="opt-startup"><i></i><span>Start with Windows</span></label>
+      <button id="desktop-shortcut"><span>Desktop shortcut</span></button>
+      <button id="restart-admin"><span>Restart as admin</span></button>
+    </div>
+  </section>
+</main>
+
+<footer class="statusbar"><span class="dot"></span><span id="status">Connecting...</span></footer>
+<div id="ghost" class="ghost"></div>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<script src="/app.js"></script>
+</body>
+</html>

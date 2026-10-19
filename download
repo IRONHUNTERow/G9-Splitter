@@ -1,0 +1,8 @@
+# personal settings and logs (created when you run the app)
+g9_splitter_config.json
+*.log
+.running
+*.lnk
+# downloaded at runtime (Intel PresentMon for the FPS counter)
+tools/
+__pycache__/
