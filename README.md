@@ -21,7 +21,7 @@ Turn one super-ultrawide monitor (like the 49" Samsung Odyssey G9) into **three 
 - **FPS counter** on the game. It uses Intel PresentMon and reads Windows' frame timing, so nothing is injected into the game.
 - **Mouse lock** keeps the mouse inside the game.
 - **Hotkeys** for everything (see below).
-- **8 themes:** Light, Dark, and fan-made styles inspired by Deadlock, Overwatch, Destiny 2, No Man's Sky, Sea of Thieves and Cyberpunk 2077.
+- **6 themes:** Light, Dark, and fan-made styles inspired by Overwatch, Destiny 2, No Man's Sky and Cyberpunk 2077.
 - **Tray icon** and fast start with Windows (straight into the tray).
 - **Installs its own updates:** when new files are copied into the app's folder, it restarts itself with the new version.
 
