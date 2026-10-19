@@ -47,6 +47,71 @@ def find_my_window():
     return found[0] if found else None
 
 
+def set_window_app_id(hwnd, app_id, command=None, name=None, icon=None):
+    """Give a window its own taskbar identity + what to start when its pinned icon is clicked."""
+    try:
+        import uuid
+        from ctypes import POINTER, byref, c_ushort, c_void_p, c_long, c_ulong, c_uint32
+
+        class GUID(ctypes.Structure):
+            _fields_ = [("d1", c_uint32), ("d2", ctypes.c_uint16), ("d3", ctypes.c_uint16),
+                        ("d4", ctypes.c_ubyte * 8)]
+
+        class PROPERTYKEY(ctypes.Structure):
+            _fields_ = [("fmtid", GUID), ("pid", c_uint32)]
+
+        class PROPVARIANT(ctypes.Structure):
+            _fields_ = [("vt", c_ushort), ("r1", c_ushort), ("r2", c_ushort), ("r3", c_ushort),
+                        ("p", c_void_p), ("p2", c_void_p)]
+
+        def guid(s):
+            return GUID.from_buffer_copy(uuid.UUID(s).bytes_le)
+        try:
+            ctypes.windll.ole32.CoInitializeEx(None, 2)
+        except Exception:
+            pass
+        get = ctypes.WinDLL("shell32").SHGetPropertyStoreForWindow
+        get.restype, get.argtypes = c_long, [c_void_p, POINTER(GUID), POINTER(c_void_p)]
+        store = c_void_p()
+        hr = get(hwnd, byref(guid("{886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99}")), byref(store))   # IPropertyStore
+        if hr < 0 or not store.value:
+            return False
+        vtbl = ctypes.cast(store, POINTER(POINTER(c_void_p))).contents
+        set_value = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(PROPERTYKEY), POINTER(PROPVARIANT))(vtbl[6])
+        commit = ctypes.WINFUNCTYPE(c_long, c_void_p)(vtbl[7])
+        release = ctypes.WINFUNCTYPE(c_ulong, c_void_p)(vtbl[2])
+        keep = []
+
+        def put(pid, text):          # System.AppUserModel.* (2 command, 3 icon, 4 name, 5 ID)
+            buf = ctypes.create_unicode_buffer(text)
+            keep.append(buf)
+            pv = PROPVARIANT()
+            pv.vt, pv.p = 31, ctypes.cast(buf, c_void_p).value          # VT_LPWSTR
+            key = PROPERTYKEY(guid("{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}"), pid)
+            return set_value(store, byref(key), byref(pv))
+        try:
+            if command:
+                put(2, command)
+            if icon:
+                put(3, icon)
+            if name:
+                put(4, name)
+            put(5, app_id)
+            commit(store)
+        finally:
+            release(store)
+        return True
+    except Exception:
+        log_error()
+        return False
+
+
+def relaunch_command(script):
+    pw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+    return f'"{pw if os.path.exists(pw) else sys.executable}" "{script}"'
+
+
+
 def set_icon(ico):
     try:
         user32 = ctypes.windll.user32
@@ -64,6 +129,9 @@ def set_icon(ico):
         small = user32.LoadImageW(None, ico, 1, 16, 16, 0x10)
         user32.SendMessageW(hwnd, 0x80, 1, big)     # WM_SETICON, ICON_BIG
         user32.SendMessageW(hwnd, 0x80, 0, small)   # WM_SETICON, ICON_SMALL
+        # pinning this window to the taskbar pins G9 Splitter 2 itself (not Python)
+        set_window_app_id(hwnd, "OleJakob.G9Splitter2", relaunch_command(os.path.join(APP_DIR, "g9_splitter.pyw")),
+                          "G9 Splitter 2", ico + ",0")
     except Exception:
         log_error()
 

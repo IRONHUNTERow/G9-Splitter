@@ -57,6 +57,146 @@ def start_crash_log():
         atexit.register(lambda: run_log("exited"))
     except Exception:
         pass
+
+
+# ---- one app on the taskbar: pinning the window pins G9 Splitter (not Python), and starting it
+# ---- again while it's running just brings the running copy to the front.
+def set_window_app_id(hwnd, app_id, command=None, name=None, icon=None):
+    """Give a window its own taskbar identity + what to start when its pinned icon is clicked."""
+    try:
+        import uuid
+        from ctypes import POINTER, byref, c_ushort, c_void_p, c_long, c_ulong, c_uint32
+
+        class GUID(ctypes.Structure):
+            _fields_ = [("d1", c_uint32), ("d2", ctypes.c_uint16), ("d3", ctypes.c_uint16),
+                        ("d4", ctypes.c_ubyte * 8)]
+
+        class PROPERTYKEY(ctypes.Structure):
+            _fields_ = [("fmtid", GUID), ("pid", c_uint32)]
+
+        class PROPVARIANT(ctypes.Structure):
+            _fields_ = [("vt", c_ushort), ("r1", c_ushort), ("r2", c_ushort), ("r3", c_ushort),
+                        ("p", c_void_p), ("p2", c_void_p)]
+
+        def guid(s):
+            return GUID.from_buffer_copy(uuid.UUID(s).bytes_le)
+        try:
+            ctypes.windll.ole32.CoInitializeEx(None, 2)
+        except Exception:
+            pass
+        get = ctypes.WinDLL("shell32").SHGetPropertyStoreForWindow
+        get.restype, get.argtypes = c_long, [c_void_p, POINTER(GUID), POINTER(c_void_p)]
+        store = c_void_p()
+        hr = get(hwnd, byref(guid("{886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99}")), byref(store))   # IPropertyStore
+        if hr < 0 or not store.value:
+            return False
+        vtbl = ctypes.cast(store, POINTER(POINTER(c_void_p))).contents
+        set_value = ctypes.WINFUNCTYPE(c_long, c_void_p, POINTER(PROPERTYKEY), POINTER(PROPVARIANT))(vtbl[6])
+        commit = ctypes.WINFUNCTYPE(c_long, c_void_p)(vtbl[7])
+        release = ctypes.WINFUNCTYPE(c_ulong, c_void_p)(vtbl[2])
+        keep = []
+
+        def put(pid, text):          # System.AppUserModel.* (2 command, 3 icon, 4 name, 5 ID)
+            buf = ctypes.create_unicode_buffer(text)
+            keep.append(buf)
+            pv = PROPVARIANT()
+            pv.vt, pv.p = 31, ctypes.cast(buf, c_void_p).value          # VT_LPWSTR
+            key = PROPERTYKEY(guid("{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}"), pid)
+            return set_value(store, byref(key), byref(pv))
+        try:
+            if command:
+                put(2, command)
+            if icon:
+                put(3, icon)
+            if name:
+                put(4, name)
+            put(5, app_id)
+            commit(store)
+        finally:
+            release(store)
+        return True
+    except Exception:
+        log_error()
+        return False
+
+
+def relaunch_command(script):
+    pw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+    return f'"{pw if os.path.exists(pw) else sys.executable}" "{script}"'
+
+
+def single_instance(name, wait):
+    """Only one copy may run (two would fight over the hotkeys)."""
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateMutexW.restype = ctypes.c_void_p
+    k32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+    k32.CloseHandle.argtypes = [ctypes.c_void_p]
+    deadline = time.time() + (8 if wait else 0)
+    while True:
+        h = k32.CreateMutexW(None, False, name)
+        if h and ctypes.get_last_error() != 183:          # ERROR_ALREADY_EXISTS
+            return h
+        if h:
+            k32.CloseHandle(h)
+        if time.time() >= deadline:
+            return None
+        time.sleep(0.5)
+
+
+def tray_class(tip):
+    return "G9SplitterTray_" + "".join(ch for ch in tip if ch.isalnum()) + "_"
+
+
+def wake_running_copy(tip):
+    """Already running: open its window (same as clicking its tray icon). True if it was found."""
+    try:
+        u32 = ctypes.WinDLL("user32", use_last_error=True)
+        u32.GetClassNameW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_int]
+        u32.GetWindowThreadProcessId.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+        u32.PostMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t, ctypes.c_ssize_t]
+        u32.AllowSetForegroundWindow.argtypes = [ctypes.c_uint32]
+        prefix, found = tray_class(tip), []
+
+        def cb(hwnd, _):
+            buf = ctypes.create_unicode_buffer(256)
+            u32.GetClassNameW(hwnd, buf, 256)
+            if buf.value.startswith(prefix):
+                found.append(hwnd)
+            return True
+        proc = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p)(cb)
+        u32.EnumWindows(proc, None)
+        for hwnd in found:
+            pid = ctypes.c_uint32()
+            u32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            u32.AllowSetForegroundWindow(pid.value)
+            u32.PostMessageW(hwnd, TrayIcon.WM_TRAY, 1, 0x0202)          # "left click"
+        return bool(found)
+    except Exception:
+        log_error()
+        return False
+
+
+def report_last_crash(exe_hint="pythonw"):
+    """If Windows recorded G9 Splitter crashing (Event Viewer > Application Error), copy that into
+    g9_splitter_run.log - it names the part that crashed, which Python itself can't always see."""
+    def work():
+        try:
+            import subprocess
+            ps = ("Get-WinEvent -FilterHashtable @{LogName='Application';ProviderName='Application Error';"
+                  "StartTime=(Get-Date).AddDays(-2)} -MaxEvents 30 -ErrorAction SilentlyContinue | "
+                  "Where-Object { $_.Message -match '" + exe_hint + "' } | ForEach-Object { "
+                  "$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss') + ' ' + (($_.Message -split '\\r?\\n' | "
+                  "Where-Object { $_ -match 'Faulting module name|Exception code|Fault offset|"
+                  "Faulting process id|Faulting application path' }) -join ' / ') }")
+            r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                               capture_output=True, text=True, timeout=60, creationflags=0x08000000)
+            seen = open(RUN_LOG, encoding="utf-8", errors="replace").read() if os.path.exists(RUN_LOG) else ""
+            for line in reversed([x.strip() for x in r.stdout.splitlines() if x.strip()]):
+                if line[:19] not in seen:
+                    run_log("Windows recorded a crash at " + " ".join(line.split()))
+        except Exception:
+            pass
+    threading.Thread(target=work, daemon=True).start()
 ICON_ICO = os.path.join(APP_DIR, "g9_splitter.ico")
 ICON_PNG = os.path.join(APP_DIR, "g9_splitter.png")
 
@@ -888,7 +1028,7 @@ class TrayIcon:
         hinst = k32.GetModuleHandleW(None)
         cls = WNDCLASSW()
         cls.lpfnWndProc, cls.hInstance = self._proc, hinst
-        cls.lpszClassName = "G9SplitterTray_" + str(os.getpid())
+        cls.lpszClassName = tray_class(tip) + str(os.getpid())     # (another start finds us by this)
         if not u32.RegisterClassW(ctypes.byref(cls)):
             raise OSError("RegisterClassW failed")
         self._cls = cls
@@ -3359,21 +3499,6 @@ class SelfUpdater:
             log_error()
 
 
-def single_instance(wait):
-    """Only one copy may run (two would fight over the hotkeys)."""
-    k32 = ctypes.windll.kernel32
-    k32.CreateMutexW.restype = wt.HANDLE
-    deadline = time.time() + (8 if wait else 0)
-    while True:
-        h = k32.CreateMutexW(None, False, "Local\\G9Splitter2_Engine")
-        if ctypes.windll.kernel32.GetLastError() != 183:   # ERROR_ALREADY_EXISTS
-            return h
-        k32.CloseHandle(h)
-        if time.time() >= deadline:
-            return None
-        time.sleep(0.5)
-
-
 def main():
     if sys.platform != "win32":
         print("G9 Splitter only runs on Windows.")
@@ -3381,12 +3506,14 @@ def main():
     start_crash_log()
     run_log("start " + " ".join(sys.argv[1:]))
     import secrets
-    mutex = single_instance(wait="--restarted" in sys.argv)
+    mutex = single_instance("Local\\G9Splitter2_Engine", wait="--restarted" in sys.argv)
     if not mutex:
         run_log("not started: already running")
         if "--from-ui" not in sys.argv:     # (a window that lost the engine asked - nothing to say)
-            ctypes.windll.user32.MessageBoxW(None, "G9 Splitter 2 is already running.", APP_NAME, 0x40)
+            if not wake_running_copy("G9 Splitter 2"):       # just open the one that's running
+                ctypes.windll.user32.MessageBoxW(None, "G9 Splitter 2 is already running.", APP_NAME, 0x40)
         return
+    report_last_crash()
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("OleJakob.G9Splitter2")
     except Exception:
