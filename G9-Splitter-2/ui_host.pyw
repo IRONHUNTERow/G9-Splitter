@@ -103,6 +103,25 @@ def main():
         def close(self):
             state["window"].destroy()
 
+        def restart_engine(self):
+            """The engine (g9_splitter.pyw) stopped: start it again - it opens its own window."""
+            try:
+                import subprocess
+                exe = sys.executable
+                pw = os.path.join(os.path.dirname(exe), "pythonw.exe")
+                with open(LOG_PATH, "a", encoding="utf-8") as f:
+                    f.write(time.strftime("%Y-%m-%d %H:%M:%S [ui] ") + "engine unreachable - restarting it\n")
+                subprocess.Popen([pw if os.path.exists(pw) else exe, os.path.join(APP_DIR, "g9_splitter.pyw"),
+                                  "--restarted", "--from-ui"], cwd=APP_DIR, close_fds=True,
+                                 creationflags=0x00000008 | 0x00000200)   # detached
+            except Exception:
+                log_error()
+            try:
+                state["window"].destroy()
+            except Exception:
+                log_error()
+            return True
+
         def allow_fg(self):
             # Lets the engine bring your game to the front after you drop it.
             ctypes.windll.user32.AllowSetForegroundWindow(-1)

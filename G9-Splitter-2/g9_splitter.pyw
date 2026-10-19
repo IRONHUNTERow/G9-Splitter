@@ -23,6 +23,40 @@ APP_NAME = "G9 Splitter"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(APP_DIR, "g9_splitter_config.json")
 LOG_PATH = os.path.join(APP_DIR, "g9_splitter_error.log")
+
+
+# ---- troubleshooting: a hard crash (inside Windows code) leaves no Python error, so record
+# ---- every start / stop, and let Python write its last words to a crash log if it dies.
+RUN_LOG = os.path.join(APP_DIR, "g9_splitter_run.log")
+
+
+def run_log(msg):
+    try:
+        lines = []
+        if os.path.exists(RUN_LOG):
+            with open(RUN_LOG, encoding="utf-8", errors="replace") as f:
+                lines = f.read().splitlines()[-150:]
+        lines.append(time.strftime("%Y-%m-%d %H:%M:%S") + f"  [{os.getpid()}] " + msg)
+        with open(RUN_LOG, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except Exception:
+        pass
+
+
+def start_crash_log():
+    try:
+        import atexit
+        import faulthandler
+        f = open(os.path.join(APP_DIR, "g9_splitter_crash.log"), "a", encoding="utf-8")
+        f.write(time.strftime("\n%Y-%m-%d %H:%M:%S") + f"  started [{os.getpid()}]\n")
+        f.flush()
+        faulthandler.enable(f, all_threads=True)
+        start_crash_log.f = f
+        if sys.stderr is None:          # no console (pythonw): keep stray errors instead of losing them
+            sys.stderr = f
+        atexit.register(lambda: run_log("exited"))
+    except Exception:
+        pass
 ICON_ICO = os.path.join(APP_DIR, "g9_splitter.ico")
 ICON_PNG = os.path.join(APP_DIR, "g9_splitter.png")
 
@@ -134,13 +168,6 @@ THEMES = {
                  accent="#3b82f6", accent_fg="#ffffff", heading="#f2f2f2", hint="#9aa0a6",
                  preview_bg="#141518", head=["Segoe UI Semibold", "Segoe UI"], body=["Segoe UI"],
                  banner="plain"),
-    "Deadlock style": dict(
-        bg="#15110d", fg="#e9dcc0", field="#201a14", field_fg="#e9dcc0", button="#2a2119",
-        button_fg="#e9dcc0", hover="#3a2e22", border="#6b5532", accent="#c79a45", accent_fg="#15110d",
-        heading="#d8b26a", hint="#a8977a", preview_bg="#0e0b08", zone_side="#3b2f22",
-        zone_center="#2f4a44", zone_hot="#c79a45", zone_outline="#c79a45", zone_text="#f3e6c8",
-        head=["Palatino Linotype", "Book Antiqua", "Georgia"], body=["Palatino Linotype", "Georgia"],
-        banner="deadlock", upper=True, spacing=3),
     "Overwatch style": dict(
         bg="#0f1a2e", fg="#ffffff", field="#182640", field_fg="#ffffff", button="#22365c",
         button_fg="#ffffff", hover="#2d4777", border="#3a5a91", accent="#f99e1a", accent_fg="#0f1a2e",
@@ -162,13 +189,6 @@ THEMES = {
         zone_center="#a8361f", zone_hot="#f6c343", zone_outline="#f3efe4", zone_text="#ffffff",
         head=["Bahnschrift SemiBold", "Bahnschrift", "Segoe UI Black"], body=["Bahnschrift", "Segoe UI"],
         banner="nms", upper=True, spacing=5, blocks=["#e8452c", "#f6c343", "#1fb5ad"]),
-    "Sea of Thieves style": dict(
-        bg="#1d1510", fg="#f1e2bf", field="#efe0bb", field_fg="#2b1d12", button="#3a2a1c",
-        button_fg="#f1e2bf", hover="#4b3725", border="#8a6a3a", accent="#1f7a7a", accent_fg="#ffffff",
-        heading="#e2b65b", hint="#bfa982", preview_bg="#0f2a33", zone_side="#6b4a2b",
-        zone_center="#1f6f73", zone_hot="#e2b65b", zone_outline="#e2b65b", zone_text="#fff6e0",
-        head=["Gabriola", "Palatino Linotype", "Georgia"], body=["Georgia"], head_scale=1.45,
-        banner="sot", sea="#2fa3a3"),
     "Cyberpunk 2077 style": dict(
         bg="#0b0c10", fg="#e6f7f7", field="#12141b", field_fg="#e6f7f7", button="#161922",
         button_fg="#fcee0a", hover="#222634", border="#2a5560", accent="#fcee0a", accent_fg="#0b0c10",
@@ -821,7 +841,12 @@ class TrayIcon:
 
     def __init__(self, tip, icon_path, on_open, on_quit, open_label):
         self.tip, self.on_open, self.on_quit, self.open_label = tip, on_open, on_quit, open_label
+        # Windows talks to the window while it's being created, so everything the
+        # message handler looks at has to exist before that.
         self.ok = False
+        self.hwnd = None
+        self.hicon = None
+        self.taskbar_created = 0
         u32 = self.u32 = ctypes.WinDLL("user32", use_last_error=True)
         s32 = self.s32 = ctypes.WinDLL("shell32", use_last_error=True)
         k32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -849,6 +874,7 @@ class TrayIcon:
                                        ctypes.c_void_p, ctypes.c_void_p]
         u32.DestroyMenu.argtypes = [ctypes.c_void_p]
         u32.SetForegroundWindow.argtypes = [ctypes.c_void_p]
+        u32.AllowSetForegroundWindow.argtypes = [ctypes.c_uint32]
         u32.PostMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t, ctypes.c_ssize_t]
         u32.DestroyWindow.argtypes = [ctypes.c_void_p]
         u32.RegisterWindowMessageW.argtypes = [ctypes.c_wchar_p]
@@ -869,7 +895,7 @@ class TrayIcon:
         self.hwnd = u32.CreateWindowExW(0, cls.lpszClassName, tip, 0, 0, 0, 0, 0, None, None, hinst, None)
         if not self.hwnd:
             raise OSError("CreateWindowExW failed")
-        self.taskbar_created = u32.RegisterWindowMessageW("TaskbarCreated")
+        self.taskbar_created = u32.RegisterWindowMessageW("TaskbarCreated") or 0
         cx, cy = u32.GetSystemMetrics(49), u32.GetSystemMetrics(50)     # small icon size
         self.hicon = (u32.LoadImageW(None, icon_path, 1, cx, cy, 0x10) if icon_path and os.path.exists(icon_path)
                       else None) or u32.LoadIconW(None, ctypes.c_void_p(32512))
@@ -917,16 +943,23 @@ class TrayIcon:
         u32.PostMessageW(self.hwnd, 0, 0, 0)
         u32.DestroyMenu(menu)
         if cmd == self.ID_OPEN:
-            self.on_open()
+            self._open()
         elif cmd == self.ID_QUIT:
             self.on_quit()
+
+    def _open(self):
+        try:   # the click gives us the right to bring a window to the front - pass it on to the app window
+            self.u32.AllowSetForegroundWindow(0xFFFFFFFF)
+        except Exception:
+            pass
+        self.on_open()
 
     def _wndproc(self, hwnd, msg, wp, lp):
         try:
             if msg == self.WM_TRAY:
                 ev = lp & 0xFFFF
                 if ev in (0x0202, 0x0203, 0x0400):             # left click / double click / NIN_SELECT
-                    self.on_open()
+                    self._open()
                 elif ev in (0x0205, 0x007B):                   # right click / context menu
                     self._menu()
                 return 0
@@ -1332,7 +1365,7 @@ class AudioMixer:
     IID_ENUMERATOR = "{A95664D2-9614-4F35-A746-DE8DB63617E6}"
     IID_SESSION_MANAGER2 = "{77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F}"
     IID_SESSION_CONTROL2 = "{BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D}"
-    IID_SIMPLE_VOLUME = "{87CE5498-68D6-44E5-9215-6F892E8F56F7}"
+    IID_SIMPLE_VOLUME = "{87CE5498-68D6-44E5-9215-6DA47EF883D8}"
     CLSCTX_ALL = 0x17
     CLSCTX_INPROC_SERVER = 0x1
     LOG = "g9_splitter_audio.log"
@@ -1594,6 +1627,8 @@ class AudioMixer:
         try:
             for e, pid, vol in sess:
                 if e == exe:
+                    self.trace.append(f"  .. {'muting' if mute else 'unmuting'} {e} pid {pid}")
+                    self._write_log(f"{'mute' if mute else 'unmute'} {exe}: in progress")
                     hr = self._set_mute(vol, mute)
                     changed += 1
                     self.trace.append(f"  -> {'mute' if mute else 'unmute'} {e} pid {pid}: {self._hr(hr)}, "
@@ -3011,6 +3046,7 @@ class Engine:
         if self.closing:
             return
         self.closing = True
+        run_log("closing: " + "".join(traceback.format_stack(limit=4)[:-1]).replace("\n", " | ")[-600:])
         try:
             self.fps_shutdown()
             ClipCursor(None)
@@ -3303,7 +3339,7 @@ class SelfUpdater:
                     return
         import subprocess
         main_file = os.path.abspath(__file__)
-        args = [a for a in sys.argv[1:] if a not in ("--restarted", "--tray", "--minimized")]
+        args = [a for a in sys.argv[1:] if a not in ("--restarted", "--tray", "--minimized", "--from-ui")]
         try:
             args += list(self.extra_args() if self.extra_args else [])
         except Exception:
@@ -3342,10 +3378,14 @@ def main():
     if sys.platform != "win32":
         print("G9 Splitter only runs on Windows.")
         return
+    start_crash_log()
+    run_log("start " + " ".join(sys.argv[1:]))
     import secrets
     mutex = single_instance(wait="--restarted" in sys.argv)
     if not mutex:
-        ctypes.windll.user32.MessageBoxW(None, "G9 Splitter 2 is already running.", APP_NAME, 0x40)
+        run_log("not started: already running")
+        if "--from-ui" not in sys.argv:     # (a window that lost the engine asked - nothing to say)
+            ctypes.windll.user32.MessageBoxW(None, "G9 Splitter 2 is already running.", APP_NAME, 0x40)
         return
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("OleJakob.G9Splitter2")

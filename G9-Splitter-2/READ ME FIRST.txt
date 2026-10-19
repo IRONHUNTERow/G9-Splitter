@@ -24,10 +24,10 @@ USING IT
 
 THEMES
   Pick one from the Theme menu at the top: Light, Dark, or styles inspired by
-  Deadlock, Overwatch, Destiny 2, No Man's Sky, Sea of Thieves and
-  Cyberpunk 2077. Each has its own fonts, shapes and menu style (no game logos
-  or artwork). The fonts are free Google Fonts look-alikes downloaded while
-  you're online; offline the app uses Windows fonts instead.
+  Overwatch, Destiny 2, No Man's Sky and Cyberpunk 2077. Each has its own
+  fonts, shapes and menu style (no game logos or artwork). The fonts are
+  free Google Fonts look-alikes downloaded while you're online; offline the
+  app uses Windows fonts instead.
 
   Every theme uses the modern layout: a 3D curved monitor, tabs (Windows /
   Remembered / Settings), real program icons, live previews of your windows
