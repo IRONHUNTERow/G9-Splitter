@@ -7,8 +7,8 @@
   document.body.dataset.host = HOST;
 
   const THEMES = {
-    "Light": "light", "Dark": "dark", "Deadlock style": "deadlock", "Overwatch style": "overwatch",
-    "Destiny 2 style": "destiny", "No Man's Sky style": "nms", "Sea of Thieves style": "sot",
+    "Light": "light", "Dark": "dark", "Overwatch style": "overwatch",
+    "Destiny 2 style": "destiny", "No Man's Sky style": "nms",
     "Cyberpunk 2077 style": "cyber",
   };
   const ZONE_NAME = { left: "Left", center: "GAME", right: "Right" };
@@ -45,11 +45,23 @@
       const r = await fetch("/api/state", { headers: { "X-Token": TOKEN } });
       if (!r.ok) return;
       const s = await r.json();
+      lostEngine = 0;
       if (press || dragging) pending = s; else render(s);
     } catch (e) {
-      setStatus("Can't reach the G9 Splitter engine - is it still running?");
+      lostEngine++;
+      // The engine stopped (it shouldn't - g9_splitter_run.log / _crash.log say why).
+      // After a few seconds, start it again; it opens a fresh window and this one closes.
+      const api = window.pywebview && window.pywebview.api;
+      if (lostEngine >= 6 && api && api.restart_engine && !restarting) {
+        restarting = true;
+        setStatus("The G9 Splitter engine stopped - starting it again...");
+        try { await api.restart_engine(); } catch (err) { }
+      } else if (!restarting) {
+        setStatus("Can't reach the G9 Splitter engine - is it still running?");
+      }
     }
   }
+  let lostEngine = 0, restarting = false;
   async function allowFocus() {
     try { if (window.pywebview && window.pywebview.api) await window.pywebview.api.allow_fg(); } catch (e) { }
   }
@@ -233,12 +245,20 @@
 
   function toast(text) {
     const box = $("#toasts");
+    // the same message again (e.g. every second while the engine is unreachable): keep one
+    for (const old of box.children) {
+      if (old.textContent === text && !old.classList.contains("out")) {
+        clearTimeout(old._timer);
+        old._timer = setTimeout(() => { old.classList.add("out"); setTimeout(() => old.remove(), 400); }, 3800);
+        return;
+      }
+    }
     const t = document.createElement("div");
     t.className = "toast";
     t.textContent = text;
     box.appendChild(t);
     while (box.children.length > 3) box.firstChild.remove();
-    setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 400); }, 3800);
+    t._timer = setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 400); }, 3800);
   }
 
   const iconURL = (h) => `/api/icon?h=${h}&t=${encodeURIComponent(TOKEN)}`;

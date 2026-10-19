@@ -199,59 +199,6 @@ body[data-theme="light"] .statusbar { background: #fff; }
 body[data-theme="dark"] .bgfx { background: radial-gradient(1200px 500px at 80% -10%, rgba(59,130,246,.12), transparent 60%); }
 
 /* =====================================================================
-   DEADLOCK STYLE - art-deco noir: brass, ink black, ornament frames
-   ===================================================================== */
-body[data-theme="deadlock"] {
-  --bg: #100c09; --text: #ecdfc3; --muted: #a8977a; --accent: #c79a45; --accent-text: #160f08;
-  --panel: linear-gradient(180deg, #1d1712, #14100c); --panel-border: #6b5532;
-  --field: #1a1410; --field-text: #ecdfc3; --field-border: #5a4a2e;
-  --row-hover: rgba(199,154,69,.08); --row-sel: linear-gradient(90deg, rgba(199,154,69,.42), rgba(199,154,69,.05)); --row-sel-text: #fff3d6;
-  --zone-side: #2a2119; --zone-center: #1f3631; --zone-border: #c79a45; --zone-hot: #c79a45; --zone-hot-text: #160f08; --zone-text: #f3e6c8;
-  --stage-bg: #0a0806; --head-color: #d8b26a;
-  --font-head: "Cinzel", "Palatino Linotype", serif; --font-body: "Alegreya Sans", "Palatino Linotype", serif;
-  --head-size: 15px; --head-spacing: .28em; --radius: 0; --btn-radius: 0;
-  font-size: 15px;
-}
-body[data-theme="deadlock"] .bgfx {
-  background:
-    radial-gradient(900px 420px at 50% -8%, rgba(199,154,69,.20), transparent 70%),
-    radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.65) 100%),
-    repeating-linear-gradient(45deg, rgba(255,235,200,.018) 0 2px, transparent 2px 7px);
-}
-body[data-theme="deadlock"] .panel { background: var(--panel); outline: 1px solid rgba(199,154,69,.28); outline-offset: -7px; padding: 20px 22px; }
-body[data-theme="deadlock"] .panel::before, body[data-theme="deadlock"] .panel::after {
-  content: ""; position: absolute; top: -6px; width: 11px; height: 11px; background: #c79a45; transform: rotate(45deg); box-shadow: 0 0 0 3px #100c09;
-}
-body[data-theme="deadlock"] .panel::before { left: -6px; }
-body[data-theme="deadlock"] .panel::after { right: -6px; }
-body[data-theme="deadlock"] .panel h2 { justify-content: center; }
-body[data-theme="deadlock"] .panel h2::before, body[data-theme="deadlock"] .panel h2::after {
-  content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, #c79a45);
-}
-body[data-theme="deadlock"] .panel h2::after { background: linear-gradient(90deg, #c79a45, transparent); }
-body[data-theme="deadlock"] .panel h2 span::before, body[data-theme="deadlock"] .panel h2 span::after { content: " \25C6 "; font-size: 9px; vertical-align: middle; color: #c79a45; }
-body[data-theme="deadlock"] button { background: transparent; border: 1px solid #c79a45; color: #ecdfc3; font: 600 12px var(--font-head); letter-spacing: .14em; text-transform: uppercase; padding: 8px 16px; }
-body[data-theme="deadlock"] button:hover { background: #c79a45; color: #160f08; box-shadow: 0 0 18px rgba(199,154,69,.35); }
-body[data-theme="deadlock"] button.primary { background: linear-gradient(180deg, #d9b05e, #a87d32); color: #160f08; }
-body[data-theme="deadlock"] .zone { border: 3px double #c79a45; border-radius: 0; }
-body[data-theme="deadlock"] .zone-head { border-bottom: 1px solid rgba(199,154,69,.45); padding-bottom: 5px; }
-body[data-theme="deadlock"] .chip { border-radius: 0; border-color: rgba(199,154,69,.4); background: rgba(0,0,0,.35); }
-body[data-theme="deadlock"] .badge { border-radius: 0; background: transparent; border: 1px solid #c79a45; color: #d8b26a; transform: rotate(45deg) scale(.82); }
-body[data-theme="deadlock"] .row { border-radius: 0; border-bottom: 1px solid rgba(199,154,69,.12); }
-body[data-theme="deadlock"] .row.selected { border-left: 2px solid #c79a45; }
-body[data-theme="deadlock"] .brand-name { color: #d8b26a; font-size: 24px; letter-spacing: .32em; text-shadow: 0 0 18px rgba(199,154,69,.35); }
-body[data-theme="deadlock"] .brand-deco { position: relative; }
-body[data-theme="deadlock"] .brand-deco::before { content: ""; position: absolute; left: 12px; right: 12px; top: 50%; height: 7px; margin-top: -4px; border-top: 1px solid #c79a45; border-bottom: 1px solid rgba(199,154,69,.45); }
-body[data-theme="deadlock"] .brand-deco::after { content: ""; position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; background: #100c09; border: 1px solid #c79a45; transform: rotate(45deg); }
-body[data-theme="deadlock"] .logo { border-radius: 0; border: 1px solid #c79a45; padding: 2px; }
-body[data-theme="deadlock"] .where { border-radius: 0; border: 1px solid #c79a45; background: transparent; color: #d8b26a; font-family: var(--font-head); }
-body[data-theme="deadlock"] .switch i { border-radius: 0; background: #2a2119; border: 1px solid #6b5532; }
-body[data-theme="deadlock"] .switch i::after { border-radius: 0; transform: rotate(45deg) scale(.8); background: #c79a45; }
-body[data-theme="deadlock"] .switch input:checked + i { background: #3d3020; }
-body[data-theme="deadlock"] .pill { border-radius: 0; }
-body[data-theme="deadlock"] .ghost { border-radius: 0; background: #c79a45; font-family: var(--font-head); letter-spacing: .08em; }
-
-/* =====================================================================
    OVERWATCH STYLE - bright, sporty, slanted shapes, orange highlights
    ===================================================================== */
 body[data-theme="overwatch"] {
@@ -403,66 +350,6 @@ body[data-theme="nms"] .pill, body[data-theme="nms"] kbd { border-radius: 0; }
 body[data-theme="nms"] .ghost { border-radius: 0; font-family: var(--font-head); font-size: 11px; letter-spacing: .2em; text-transform: uppercase; }
 
 /* =====================================================================
-   SEA OF THIEVES STYLE - wood, parchment maps, gold and the sea
-   ===================================================================== */
-body[data-theme="sot"] {
-  --bg: #2c1e14; --text: #f1e2bf; --muted: #c8b48c; --accent: #1f7a7a; --accent-text: #fff;
-  --panel: #ecd9ad; --panel-border: #5a3b1f;
-  --field: #fff4d8; --field-text: #3b2614; --field-border: #8a6a3a;
-  --row-hover: rgba(90,46,18,.10); --row-sel: rgba(31,122,122,.85); --row-sel-text: #fff;
-  --zone-side: #6b4a2b; --zone-center: #1d6a70; --zone-border: #d4a945; --zone-hot: #e2b65b; --zone-hot-text: #2b1a0e; --zone-text: #fff6e0;
-  --stage-bg: #0f2a33; --head-color: #6b2412;
-  --font-head: "Pirata One", "Palatino Linotype", serif; --font-body: "Alegreya", "Georgia", serif;
-  --head-size: 26px; --head-spacing: .02em; --head-weight: 400; --head-transform: none; --radius: 6px; --btn-radius: 4px;
-  font-size: 15px;
-}
-body[data-theme="sot"] .bgfx {
-  background:
-    radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.6) 100%),
-    repeating-linear-gradient(0deg, rgba(0,0,0,.0) 0 3px, rgba(0,0,0,.05) 3px 4px),
-    repeating-linear-gradient(90deg, #3b2919 0 150px, #23170e 150px 154px, #3f2c1b 154px 300px, #23170e 300px 304px);
-}
-body[data-theme="sot"] .panel {
-  color: #3b2614; border-width: 2px;
-  background: radial-gradient(ellipse at 50% 40%, #f6e8c6 0%, #ecd6a6 60%, #d6b47a 100%);
-  box-shadow: 0 8px 22px rgba(0,0,0,.55), inset 0 0 42px rgba(120,72,20,.42);
-  --muted: #7a5a36;
-}
-body[data-theme="sot"] .panel h2 { text-decoration: underline wavy rgba(160,110,40,.65) 2px; text-underline-offset: 6px; margin-bottom: 12px; }
-body[data-theme="sot"] .panel h2::before { content: "\2693"; font-family: "Segoe UI Symbol", serif; font-size: 18px; color: #8a1f1f; }
-body[data-theme="sot"] button { background: #2d1d12; color: #f1e2bf; border: 2px solid #c9a15a; font: 400 18px/1 var(--font-head); letter-spacing: .03em; padding: 6px 14px 7px; }
-body[data-theme="sot"] button:hover { background: #c9a15a; color: #2d1d12; }
-body[data-theme="sot"] button.primary { background: #1f7a7a; border-color: #e2b65b; }
-body[data-theme="sot"] button.primary:hover { background: #e2b65b; color: #2d1d12; }
-body[data-theme="sot"] .stage { border: 3px solid #5a3b1f; box-shadow: inset 0 0 30px rgba(0,0,0,.6);
-  background: repeating-radial-gradient(circle at 30% 120%, rgba(255,255,255,.04) 0 6px, transparent 6px 18px), #0f2a33; }
-body[data-theme="sot"] .zone { border: 3px solid #d4a945; border-radius: 8px; box-shadow: inset 0 0 18px rgba(0,0,0,.45); }
-body[data-theme="sot"] .zone[data-zone="center"] { background: repeating-linear-gradient(170deg, rgba(255,255,255,.06) 0 3px, transparent 3px 14px), var(--zone-center); }
-body[data-theme="sot"] .zone:not([data-zone="center"]) { background: repeating-linear-gradient(90deg, rgba(0,0,0,.12) 0 2px, transparent 2px 22px), var(--zone-side); }
-body[data-theme="sot"] .zone-head b { font: 400 20px/1 var(--font-head); letter-spacing: .02em; text-transform: none; color: #ffe7a8; }
-body[data-theme="sot"] .drop-hint { font: 400 26px var(--font-head); text-transform: none; }
-body[data-theme="sot"] .chip { background: rgba(255,244,216,.92); color: #3b2614; border: 1px solid #8a6a3a; border-radius: 3px; }
-body[data-theme="sot"] .badge { background: #8a1f1f; color: #ffe7a8; border-radius: 50%; font-family: var(--font-head); font-size: 15px; box-shadow: 0 0 0 2px #d4a945; }
-body[data-theme="sot"] .row { border-bottom: 1px dashed rgba(90,59,31,.25); border-radius: 3px; }
-body[data-theme="sot"] .where { background: #1f7a7a; color: #fff; font-family: var(--font-head); font-size: 13px; text-transform: none; letter-spacing: 0; }
-body[data-theme="sot"] .where-center { background: #8a1f1f; }
-body[data-theme="sot"] .brand-name { color: #e2b65b; font: 400 36px/1 var(--font-head); letter-spacing: .04em; text-shadow: 0 2px 0 #2b1a0e, 0 0 14px rgba(226,182,91,.35); text-transform: none; }
-body[data-theme="sot"] .brand-sub { color: #c8b48c; }
-body[data-theme="sot"] .brand-deco::before { content: ""; flex: 1; height: 14px; background: radial-gradient(circle at 10px -4px, transparent 9px, #2fa3a3 10px, #2fa3a3 12px, transparent 13px) 0 0 / 20px 14px repeat-x; opacity: .8; }
-body[data-theme="sot"] .switch i { background: #8a6a3a; }
-body[data-theme="sot"] .switch input:checked + i { background: #1f7a7a; }
-body[data-theme="sot"] .toggles, body[data-theme="sot"] .opts, body[data-theme="sot"] .rule-add { color: #3b2614; }
-body[data-theme="sot"] .tip, body[data-theme="sot"] .keys { color: #7a5a36; }
-body[data-theme="sot"] kbd { background: #fff4d8; color: #3b2614; border-color: #8a6a3a; }
-body[data-theme="sot"] .field { color: #7a5a36; }
-body[data-theme="sot"] .theme-pick { color: #c8b48c; }
-body[data-theme="sot"] .statusbar { background: #1a110a; border-top: 2px solid #5a3b1f; color: #c8b48c; font-family: var(--font-body); }
-body[data-theme="sot"] .statusbar .dot { background: #e2b65b; box-shadow: 0 0 8px #e2b65b; }
-body[data-theme="sot"] .ghost { background: #fff4d8; color: #3b2614; border: 2px solid #c9a15a; font-family: var(--font-head); font-size: 17px; font-weight: 400; }
-body[data-theme="sot"] .ghost .badge { background: #8a1f1f; color: #ffe7a8; }
-body[data-theme="sot"] .empty { color: #7a5a36; }
-
-/* =====================================================================
    CYBERPUNK 2077 STYLE - neon yellow, red and cyan, notched HUD panels
    ===================================================================== */
 body[data-theme="cyber"] {
@@ -527,14 +414,10 @@ body[data-theme="cyber"] .ghost { border-radius: 0; clip-path: polygon(0 0, 100%
   97% { transform: none; clip-path: none; }
 }
 
-
 /* ---------- drop-down menu per theme ---------- */
 body[data-theme="light"] { --menu-bg: #fff; --menu-text: #15171c; --menu-hover: #e8efff; --menu-hover-text: #15171c; --menu-border: #d5dae3; }
 body[data-theme="light"] .dd-menu { box-shadow: 0 12px 32px rgba(20,30,60,.18); }
-body[data-theme="deadlock"] { --menu-bg: #17120e; --menu-text: #ecdfc3; --menu-hover: rgba(199,154,69,.28); --menu-hover-text: #fff3d6; --menu-border: #c79a45; --menu-radius: 0; }
-body[data-theme="deadlock"] .dd-menu { outline: 1px solid rgba(199,154,69,.3); outline-offset: -5px; padding: 8px; }
-body[data-theme="deadlock"] .dd-item { font-family: var(--font-head); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
-body[data-theme="deadlock"] .dd-item.selected::before { border-radius: 0; transform: rotate(45deg); background: #c79a45; }
+
 body[data-theme="overwatch"] { --menu-bg: #10224a; --menu-text: #fff; --menu-hover: #f99e1a; --menu-hover-text: #10203f; --menu-border: rgba(255,255,255,.25); --menu-radius: 0; }
 body[data-theme="overwatch"] .dd-menu { border-left: 4px solid #f99e1a; }
 body[data-theme="overwatch"] .dd-item { font: 500 19px/1 var(--font-head); text-transform: uppercase; padding-top: 8px; padding-bottom: 6px; transform: skewX(-8deg); }
@@ -545,10 +428,7 @@ body[data-theme="nms"] { --menu-bg: #0d0b24; --menu-text: #f3efe4; --menu-hover:
 body[data-theme="nms"] .dd-menu { box-shadow: inset 4px 0 0 #f6c343, 0 14px 40px rgba(0,0,0,.6); padding-left: 9px; }
 body[data-theme="nms"] .dd-item { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; }
 body[data-theme="nms"] .dd-item.selected::before { border-radius: 0; background: #1fb5ad; }
-body[data-theme="sot"] { --menu-bg: #f4e6c4; --menu-text: #3b2614; --menu-hover: #1f7a7a; --menu-hover-text: #fff; --menu-border: #5a3b1f; --menu-radius: 4px; }
-body[data-theme="sot"] .dd-menu { border-width: 2px; box-shadow: 0 12px 30px rgba(0,0,0,.6), inset 0 0 30px rgba(120,72,20,.35); }
-body[data-theme="sot"] .dd-item { font: 400 18px/1.1 var(--font-head); }
-body[data-theme="sot"] .dd-item.selected::before { background: #8a1f1f; }
+
 body[data-theme="cyber"] { --menu-bg: #07090d; --menu-text: #e6f7f7; --menu-hover: #fcee0a; --menu-hover-text: #050608; --menu-border: #00f0ff; --menu-radius: 0; }
 body[data-theme="cyber"] .dd-menu { clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%); box-shadow: none; }
 body[data-theme="cyber"] .dd-item { font: 600 15px/1.2 var(--font-head); text-transform: uppercase; letter-spacing: .1em; }
@@ -556,8 +436,7 @@ body[data-theme="cyber"] .dd-item.selected::before { border-radius: 0; backgroun
 
 /* ---------- the action button matching the selected window's spot ---------- */
 body[data-theme] .actions button.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-body[data-theme="deadlock"] .actions button.active { background: linear-gradient(180deg, #d9b05e, #a87d32); color: #160f08; box-shadow: 0 0 16px rgba(199,154,69,.35); }
-body[data-theme="sot"] .actions button.active { background: #1f7a7a; color: #fff; border-color: #e2b65b; }
+
 body[data-theme="cyber"] .actions button.active { box-shadow: 0 0 16px rgba(252,238,10,.55); }
 body[data-theme="nms"] .actions button.active { background: #f6c343; color: #1a1030; }
 body[data-theme="overwatch"] .actions button.active { background: #f99e1a; color: #10203f; }
@@ -743,17 +622,6 @@ body.modern[data-theme="light"] .zone-head { border-bottom-color: rgba(255,255,2
 body.modern[data-theme="light"] .row.card:hover { box-shadow: 0 12px 26px rgba(20,30,60,.14); }
 body.modern[data-theme="light"] .toast { box-shadow: 0 12px 30px rgba(20,30,60,.2); }
 
-/* Deadlock - brass frames, diamonds, small caps */
-body.modern[data-theme="deadlock"] { --card-bg: rgba(29,23,18,.85); --card-border: rgba(199,154,69,.35); --card-hover: rgba(199,154,69,.08); --sel-text: #160f08; }
-body.modern[data-theme="deadlock"] .zone { border: 3px double #c79a45; border-radius: 0; }
-body.modern[data-theme="deadlock"] .tabs { justify-content: center; border-bottom: 1px solid rgba(199,154,69,.45); }
-body.modern[data-theme="deadlock"] .tabs button { font-size: 14px; letter-spacing: .3em; }
-body.modern[data-theme="deadlock"] .tabs button + button::before { content: "\25C6"; color: #c79a45; font-size: 8px; margin-right: 18px; }
-body.modern[data-theme="deadlock"] .row.card { border-radius: 0; outline: 1px solid rgba(199,154,69,.18); outline-offset: -5px; }
-body.modern[data-theme="deadlock"] .row.card.selected { outline-color: rgba(199,154,69,.6); }
-body.modern[data-theme="deadlock"] .card-info .row-title { font-family: var(--font-head); font-size: 13px; letter-spacing: .06em; }
-body.modern[data-theme="deadlock"] .toast { border-radius: 0; border: 1px solid #c79a45; outline: 1px solid rgba(199,154,69,.3); outline-offset: -5px; font-family: var(--font-head); letter-spacing: .04em; }
-
 /* Overwatch - slanted tabs and cards, orange highlights */
 body.modern[data-theme="overwatch"] { --card-bg: rgba(255,255,255,.07); --card-border: rgba(255,255,255,.18); --card-hover: rgba(255,255,255,.12); --sel: #f99e1a; --ink: #f99e1a; }
 body.modern[data-theme="overwatch"] .zone { border-width: 0 0 0 4px; border-color: rgba(255,255,255,.85); border-radius: 0; }
@@ -798,26 +666,6 @@ body.modern[data-theme="nms"] .row.card { border-radius: 0; clip-path: polygon(1
 body.modern[data-theme="nms"] .row.card.selected { box-shadow: inset 3px 0 0 #f6c343, 0 0 0 1px #f6c343; }
 body.modern[data-theme="nms"] .card-info .row-title { text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }
 body.modern[data-theme="nms"] .toast { border-radius: 0; clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); border-left-color: #f6c343; text-transform: uppercase; letter-spacing: .06em; font-size: 12px; }
-
-/* Sea of Thieves - parchment cards, rope edges, the sea */
-body.modern[data-theme="sot"] { --card-bg: rgba(255,248,226,.55); --card-border: #8a6a3a; --card-hover: rgba(255,248,226,.85); --sel: #8a1f1f; --sel-text: #ffe7a8; --ink: #e2b65b; --glass: rgba(90,59,31,.12); --glass-border: rgba(90,59,31,.35); }
-body.modern[data-theme="sot"] .zone { border: 3px solid #d4a945; border-radius: 8px; }
-body.modern[data-theme="sot"] .zone[data-zone="center"] { background: repeating-linear-gradient(170deg, rgba(255,255,255,.06) 0 3px, transparent 3px 14px), linear-gradient(180deg, #23807f, #134a52); }
-body.modern[data-theme="sot"] .zone:not([data-zone="center"]) { background: repeating-linear-gradient(90deg, rgba(0,0,0,.12) 0 2px, transparent 2px 22px), linear-gradient(180deg, #7a5532, #4e341d); }
-body.modern[data-theme="sot"] .zone-head b { font: 400 22px/1 var(--font-head); letter-spacing: .02em; text-transform: none; color: #ffe7a8; }
-body.modern[data-theme="sot"] .tabs { border-bottom: 2px solid #5a3b1f; }
-body.modern[data-theme="sot"] .tabs button { font: 400 24px/1 var(--font-head); letter-spacing: .02em; text-transform: none; color: #c8b48c; }
-body.modern[data-theme="sot"] .tabs button.on, body.modern[data-theme="sot"] .tabs button:hover { color: #e2b65b; }
-body.modern[data-theme="sot"] .tabs em { color: #f1e2bf; border-color: #8a6a3a; }
-body.modern[data-theme="sot"] .tab-ink { height: 3px; background: repeating-linear-gradient(90deg, #e2b65b 0 6px, #8a6a3a 6px 9px); }
-body.modern[data-theme="sot"] .row.card { border-width: 2px; border-radius: 4px; box-shadow: 0 4px 10px rgba(90,59,31,.25); }
-body.modern[data-theme="sot"] .row.card.selected { box-shadow: 0 0 0 2px #8a1f1f, 0 6px 16px rgba(90,59,31,.35); }
-body.modern[data-theme="sot"] .card-info .row-title { font: 400 19px/1.1 var(--font-head); }
-body.modern[data-theme="sot"] .row.card.selected .thumb::after { content: "\2693  Selected"; font: 400 15px/1.2 var(--font-head); letter-spacing: .02em; text-transform: none; border-radius: 3px; }
-body.modern[data-theme="sot"] .chip { background: rgba(255,244,216,.94); color: #3b2614; border-color: #8a6a3a; }
-body.modern[data-theme="sot"] .chip:hover { background: #fff6dc; border-color: #5a3b1f; }
-body.modern[data-theme="sot"] .stage::after { background: linear-gradient(180deg, #8a6a3a, #3b2919); }
-body.modern[data-theme="sot"] .toast { background: radial-gradient(ellipse at 50% 40%, #f6e8c6, #e3c890); color: #3b2614; border: 2px solid #5a3b1f; border-left-width: 5px; border-radius: 4px; font: 400 15px/1.3 var(--font-body); }
 
 /* Cyberpunk 2077 - notched HUD tiles, neon, glitch */
 body.modern[data-theme="cyber"] { --card-bg: rgba(10,12,18,.9); --card-border: rgba(0,240,255,.35); --card-hover: rgba(0,240,255,.07); --sel: #fcee0a; --sel-text: #050608; --ink: #fcee0a; }
