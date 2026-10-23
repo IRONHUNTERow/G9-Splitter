@@ -166,7 +166,11 @@ def wake_running_copy(tip):
             pid = ctypes.c_uint32()
             u32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
             u32.AllowSetForegroundWindow(pid.value)
-            u32.PostMessageW(hwnd, TrayIcon.WM_TRAY, 1, 0x0202)          # "left click"
+            ok = u32.PostMessageW(hwnd, TrayIcon.WM_TRAY, 1, 0x0202)          # "left click"
+            run_log(f"asked the running copy (pid {pid.value}) to open its window: "
+                    f"{'sent' if ok else 'failed, error ' + str(ctypes.get_last_error())}")
+        if not found:
+            run_log("couldn't find the running copy's tray icon")
         return bool(found)
     except Exception:
         log_error()
@@ -194,6 +198,93 @@ def report_last_crash(exe_hint="pythonw"):
         except Exception:
             pass
     threading.Thread(target=work, daemon=True).start()
+
+
+# ---- never let a busy program freeze G9 Splitter: right after you sign in, apps like Discord,
+# ---- Steam or Spotify are still starting and don't answer for a while. Changing such a window's
+# ---- border or asking it to restore waits for it - so check first, and move it a bit later.
+_slow_until = {}
+
+
+def window_responds(hwnd, ms=250):
+    """True if the window's program answers within `ms` (a busy one is skipped for a few seconds)."""
+    now = time.time()
+    if _slow_until.get(hwnd, 0) > now:
+        return False
+    try:
+        u32 = ctypes.windll.user32
+        u32.SendMessageTimeoutW.restype = ctypes.c_ssize_t
+        u32.SendMessageTimeoutW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t, ctypes.c_ssize_t,
+                                            ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_size_t)]
+        res = ctypes.c_size_t()
+        ok = bool(u32.SendMessageTimeoutW(hwnd, 0, 0, 0, 0x0002 | 0x0020, ms, ctypes.byref(res)))
+    except Exception:
+        return True                # can't tell - don't block the move
+    if not ok:                     # (WM_NULL, SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT)
+        _slow_until[hwnd] = now + 3
+        if len(_slow_until) > 200:
+            _slow_until.clear()
+    return ok
+
+
+def show_async(hwnd, cmd):
+    """ShowWindow without waiting for the window's program."""
+    try:
+        f = ctypes.windll.user32.ShowWindowAsync
+        f.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        return f(hwnd, cmd)
+    except Exception:
+        return False
+
+
+def log_ready(what):
+    """How long starting took - counted from when Windows started the program (incl. Python itself)."""
+    try:
+        k32 = ctypes.windll.kernel32
+        ft = [ctypes.c_uint64() for _ in range(4)]
+        k32.GetCurrentProcess.restype = ctypes.c_void_p
+        k32.GetProcessTimes.argtypes = [ctypes.c_void_p] + [ctypes.POINTER(ctypes.c_uint64)] * 4
+        k32.GetProcessTimes(k32.GetCurrentProcess(), *[ctypes.byref(x) for x in ft])
+        now = ctypes.c_uint64()
+        k32.GetSystemTimeAsFileTime.argtypes = [ctypes.POINTER(ctypes.c_uint64)]
+        k32.GetSystemTimeAsFileTime(ctypes.byref(now))
+        k32.GetTickCount64.restype = ctypes.c_uint64
+        run_log(f"{what} ready {(now.value - ft[0].value) / 1e7:.1f}s after it was started "
+                f"(Windows has been on for {k32.GetTickCount64() / 60000:.0f} min)")
+    except Exception:
+        run_log(f"{what} ready")
+
+
+def start_watchdog(root, what):
+    """Writes to g9_splitter_run.log how long starting took (and since Windows started), and if the
+    app ever stops responding for more than a few seconds - with where it was stuck."""
+    t0 = time.time()
+    state = {"beat": t0}
+
+    def beat():
+        state["beat"] = time.time()
+        try:
+            root.after(1000, beat)
+        except Exception:
+            pass
+    root.after(0, beat)
+    main_id = threading.main_thread().ident
+
+    def watch():
+        reported = 0.0
+        while True:
+            time.sleep(2)
+            stuck = time.time() - state["beat"]
+            if stuck > 6 and time.time() - reported > 30:
+                reported = time.time()
+                try:
+                    fr = sys._current_frames().get(main_id)
+                    where = " | ".join(l.strip().replace("\n", " ") for l in traceback.format_stack(fr)[-3:]) \
+                        if fr else "?"
+                except Exception:
+                    where = "?"
+                run_log(f"not responding for {stuck:.0f}s, at: {where[-700:]}")
+    threading.Thread(target=watch, daemon=True).start()
 ICON_ICO = os.path.join(APP_DIR, "g9_splitter.ico")
 ICON_PNG = os.path.join(APP_DIR, "g9_splitter.png")
 
@@ -1040,6 +1131,12 @@ class TrayIcon:
         self.hicon = (u32.LoadImageW(None, icon_path, 1, cx, cy, 0x10) if icon_path and os.path.exists(icon_path)
                       else None) or u32.LoadIconW(None, ctypes.c_void_p(32512))
         self.ok = self._add()
+        self.tries = 0
+        if not self.ok:
+            # Right after you sign in the taskbar may not be ready yet: try again every 2 seconds.
+            run_log("tray icon: taskbar not ready yet - retrying")
+            u32.SetTimer.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint, ctypes.c_void_p]
+            u32.SetTimer(self.hwnd, 7, 2000, None)
 
     def _data(self, flags):
         d = _NOTIFYICONDATAW()
@@ -1105,6 +1202,15 @@ class TrayIcon:
                 return 0
             if msg == self.taskbar_created and self.taskbar_created:
                 self.ok = self._add()                          # Explorer restarted: put the icon back
+                return 0
+            if msg == 0x0113 and wp == 7:                      # WM_TIMER: retry adding the icon
+                self.tries += 1
+                if not self.ok:
+                    self.ok = self._add()
+                if self.ok or self.tries > 60:
+                    self.u32.KillTimer.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+                    self.u32.KillTimer(hwnd, 7)
+                    run_log(f"tray icon: {'added' if self.ok else 'gave up'} after {self.tries * 2}s")
                 return 0
         except Exception:
             log_error()
@@ -2367,14 +2473,16 @@ class App:
             cur = visible_rect(hwnd)
             if not all(abs(a - b) <= 3 for a, b in zip(cur, target)):
                 if tries > 0:
+                    if not window_responds(hwnd):       # busy - try again in a moment
+                        self.root.after(1000, lambda: self.verify_place(hwnd, target, borderless, tries - 1, quiet))
+                        return
                     if IsZoomed(hwnd):
-                        ShowWindow(hwnd, SW_RESTORE)
+                        show_async(hwnd, SW_RESTORE)
                     x, y, w, h = target
                     if borderless:
-                        SetWindowPos(hwnd, None, x, y, w, h,
-                                     (MOVE_FLAGS & ~SWP_ASYNCWINDOWPOS) | SWP_FRAMECHANGED)
+                        SetWindowPos(hwnd, None, x, y, w, h, MOVE_FLAGS | SWP_FRAMECHANGED)
                     else:
-                        self.move_visible(hwnd, x, y, w, h, sync=True)
+                        self.move_visible(hwnd, x, y, w, h)
                     self.root.after(300, lambda: self.verify_place(hwnd, target, borderless, tries - 1, quiet))
                     return
                 if not quiet:
@@ -2880,8 +2988,13 @@ class App:
             if not quiet:
                 self.set_status("That zone has no space - make the game area narrower.")
             return False
+        if not window_responds(hwnd):
+            # Its program is busy (often right after you sign in) - automatic moves try again shortly.
+            if not quiet:
+                self.set_status("That window isn't responding right now - try again in a moment.")
+            return False
         if IsZoomed(hwnd) or IsIconic(hwnd):
-            ShowWindow(hwnd, SW_RESTORE)
+            show_async(hwnd, SW_RESTORE)
         style = GetWindowLongPtrW(hwnd, GWL_STYLE)
         exstyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE)
         if borderless:
@@ -2969,6 +3082,9 @@ class App:
     def restore(self, hwnd):
         if not hwnd or not IsWindow(hwnd):
             self.set_status("That window is closed.")
+            return
+        if not window_responds(hwnd, 1000):
+            self.set_status("That window isn't responding right now - try again in a moment.")
             return
         self.paused.add(hwnd)
         if self.lock_hwnd == hwnd:
@@ -3685,6 +3801,7 @@ def main():
         pass
     import tkinter as tk
     root = tk.Tk()
+    start_watchdog(root, "G9 Splitter")
     try:
         if os.path.exists(ICON_ICO):
             root.iconbitmap(default=ICON_ICO)
@@ -3710,6 +3827,7 @@ def main():
                              + traceback.format_exc()[-1500:])
         root.destroy()
         return
+    log_ready("G9 Splitter")
     root.mainloop()
 
 
