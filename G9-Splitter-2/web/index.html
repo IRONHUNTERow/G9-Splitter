@@ -57,6 +57,15 @@
       <div class="zone" data-zone="center"><div class="zone-head"><b>Middle</b><em></em></div><div class="chips"></div><div class="empty-hint">Drag your game here</div><div class="drop-hint">Drop here</div></div>
       <div class="zone" data-zone="right"><div class="zone-head"><b>Right screen</b><em></em></div><div class="chips"></div><div class="drop-hint">Drop here</div></div>
     </div>
+    <div class="stagebar" id="stagebar">
+      <div class="layouts" id="layouts" title="Saved layouts: the game area and where your apps go - click one to switch"></div>
+      <div class="dropzone other-zone" data-zone="other" id="other-zone" title="Drop a window here to fill your other monitor with it">
+        <span class="oz-icon" aria-hidden="true"></span><span class="oz-text"><b>Other monitor</b><em></em></span><span class="oz-apps"></span>
+      </div>
+      <div class="spacer"></div>
+      <div class="playtime" id="playtime" title="How long you've been playing (this session)"></div>
+      <button class="update-pill" id="update-pill" title="A new version of G9 Splitter is ready"><span></span></button>
+    </div>
     <div class="toggles">
       <label class="switch"><input type="checkbox" id="opt-ontop"><i></i><span>Game covers the taskbar while you're playing</span></label>
       <label class="switch"><input type="checkbox" id="opt-auto"><i></i><span>Auto-place remembered apps</span></label>
@@ -92,6 +101,7 @@
         <button data-place="center" data-borderless="1" title="For games: no border, covers the taskbar"><span>GAME</span></button>
         <button data-place="center" title="For everyday apps: keeps its border, stops above the taskbar"><span>Middle</span></button>
         <button data-place="right"><span>Right &#9654;</span></button>
+        <button data-place="other" id="act-other" title="Fill your other monitor with it"><span>Other monitor</span></button>
         <button id="restore"><span>Restore</span></button>
         <button id="win-ignore" data-needs-sel title="Leave this program completely alone - it's never moved, resized or put on top, so it can run full screen"><span>&#8856; Ignore</span></button>
         <button id="win-remember" class="remember-btn" data-needs-sel title="Remember this window in the spot it's in now - it goes there automatically every time it opens"><span>&#9733; Remember selected</span></button>
@@ -116,13 +126,25 @@
   </div>
 
   <section class="panel help-panel">
-    <div class="keys">
-      <div><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>&uarr;</kbd> to the middle (GAME for games)</div>
-      <div><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd> side screens</div>
-      <div><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>&darr;</kbd> back to normal</div>
-      <div><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>L</kbd> lock mouse</div>
-      <div><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>F</kbd> FPS counter</div>
-      <div><kbd>Alt</kbd><kbd>Tab</kbd> normal desktop &middot; click the game to go back</div>
+    <div class="keys" id="keys"></div>
+    <div class="extra-settings">
+      <h3>While you play</h3>
+      <label class="switch" title="Turns on Windows' Do Not Disturb while a game is in the middle, and off again when you stop"><input type="checkbox" id="opt-dnd"><i></i><span>Do Not Disturb while gaming</span></label>
+      <label class="field"><span>Break reminder</span><select id="opt-remind"></select></label>
+      <label class="field other-mon-field"><span>Your other monitor</span><select id="opt-other-mon"></select></label>
+      <h3>Updates</h3>
+      <div class="update-row">
+        <label class="switch"><input type="checkbox" id="opt-updates"><i></i><span>Check for updates</span></label>
+        <button id="check-updates"><span>Check now</span></button>
+        <span class="version" id="version"></span>
+      </div>
+      <h3>Setup</h3>
+      <div><button id="run-setup"><span>Run the setup again</span></button></div>
+    </div>
+    <div class="hotkeys-box">
+      <h3>Shortcuts <em>work everywhere, also inside games</em></h3>
+      <div class="hk-list" id="hk-list"></div>
+      <div class="hk-foot"><span class="tip">Click a shortcut, then press the new keys (Ctrl / Alt / Shift / Win + a key). <kbd>Esc</kbd> cancels.</span><button id="hk-reset"><span>Back to the defaults</span></button></div>
     </div>
     <div class="opts">
       <label class="switch"><input type="checkbox" id="opt-startup"><i></i><span>Start with Windows</span></label>
@@ -135,6 +157,7 @@
 <footer class="statusbar"><span class="dot"></span><span id="status">Connecting...</span></footer>
 <div id="ghost" class="ghost"></div>
 <div id="toasts" class="toasts" aria-live="polite"></div>
+<div id="modal" class="modal" hidden><div class="modal-box" role="dialog" aria-modal="true"></div></div>
 <script src="/app.js"></script>
 </body>
 </html>

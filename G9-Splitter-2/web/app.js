@@ -11,7 +11,7 @@
     "Destiny 2 style": "destiny", "No Man's Sky style": "nms",
     "Cyberpunk 2077 style": "cyber",
   };
-  const ZONE_NAME = { left: "Left", center: "GAME", right: "Right" };
+  const ZONE_NAME = { left: "Left", center: "GAME", right: "Right", other: "Other monitor" };
   const $ = (s) => document.querySelector(s);
   const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -209,7 +209,8 @@
     if (on === modern) return;
     modern = on;
     document.body.classList.toggle("modern", on);
-    const pieces = [".layout-controls", ".layout-more", ".toggles", ".help-panel .keys", ".help-panel .opts"];
+    const pieces = [".layout-controls", ".layout-more", ".toggles", ".help-panel .opts", ".help-panel .extra-settings",
+      ".help-panel .hotkeys-box"];
     if (on) {
       pieces.forEach((sel) => {
         const el = $(sel);
@@ -354,6 +355,11 @@
     renderChips();
     renderWindows();
     renderRules();
+    renderLayouts();
+    renderStagebar();
+    renderExtraSettings();
+    renderHotkeys();
+    maybeOpenSetup();
   }
 
   const px = (n) => (Math.round(n * 100) / 100) + "px";
@@ -478,7 +484,7 @@
     if (selected && !S.windows.some((w) => w.hwnd === selected)) selected = null;
     setText($("#count-windows"), String(S.windows.length));
     // Selecting a window never rebuilds the list (no blinking) - see applySelection().
-    if (changed("windows", [modern, q, wins.map((w) => [w.hwnd, w.title, w.exe, w.zone, w.borderless, w.muted, w.ignored])])) {
+    if (changed("windows", [modern, q, wins.map((w) => [w.hwnd, w.title, w.exe, w.zone, w.borderless, w.muted, w.ignored, w.volume])])) {
       if (modern) renderCards(list, wins); else renderRows(list, wins);
     }
     applySelection();
@@ -515,6 +521,22 @@
     b.setAttribute("aria-label", MUTE_TIPS[st]);
     b.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MUTE_ICONS[st]}</svg>`;
   }
+  // volume slider: shows when you point at the speaker; only for programs that are making sound
+  function setVolume(el, w) {
+    const box = el.querySelector(".vol-pop");
+    if (!box) return;
+    const has = typeof w.volume === "number";
+    box.classList.toggle("none", !has);
+    const r = box.querySelector(".vol");
+    if (has && !r._busy) {
+      const v = String(Math.round(w.volume * 100));
+      if (r.value !== v) r.value = v;
+      setText(box.querySelector(".vol-val"), v + "%");
+      r.style.setProperty("--v", v + "%");
+    }
+    const tip = has ? "Volume (Windows' volume mixer)" : "Not making sound right now";
+    if (box.title !== tip) box.title = tip;
+  }
   function renderCards(list, wins) {
     if (wins.length) [...list.children].forEach((c) => { if (!c.classList.contains("card")) c.remove(); });
     const have = {};
@@ -536,7 +558,8 @@
           `${iconBadge(w, "big")}<span class="where-slot">${whereTag(w)}</span></div>` +
           `<div class="card-info">${iconBadge(w)}<span class="row-main"><span class="row-title"></span>` +
           `<span class="row-exe"></span></span></div>` +
-          (w.exe ? `<button class="mute-btn" data-mute="${w.hwnd}"></button>` : "");   // pinned bottom-right of the card
+          (w.exe ? `<div class="vol-pop" data-volbox="${w.hwnd}"><input type="range" class="vol" min="0" max="100" step="1" data-vol="${w.hwnd}" aria-label="Volume"><b class="vol-val"></b></div>` +
+                   `<button class="mute-btn" data-mute="${w.hwnd}"></button>` : "");   // pinned bottom-right of the card
         // only the very first list slides in; windows that open later just appear (no blinking)
         if (cardsShown) el.classList.add("seen"); else setTimeout(() => el.classList.add("seen"), 700);
       }
@@ -548,6 +571,7 @@
         if (slot._html !== tag) { slot.innerHTML = tag; slot._html = tag; }
       }
       setMuteButton(el.querySelector(".mute-btn"), w);
+      setVolume(el, w);
       const want = prev ? prev.nextSibling : list.firstChild;
       if (want !== el) list.insertBefore(el, want);
       prev = el;
@@ -600,6 +624,10 @@
     const rows = S.rules.map((r) =>
       `<div class="row rule">${ruleBadge(r)}` +
       `<span class="row-main"><span class="row-title">${esc(r.app.replace(/\.exe$/i, ""))}</span><span class="row-exe">${esc(r.where)}</span></span>` +
+      (r.game ? `<span class="ratio-pick" title="This game's own game area (Default = the one in Settings)"><select data-ratio="${r.index}">` +
+        ["Default"].concat(S.presets.filter((p) => p !== "Custom")).map((p) =>
+          `<option value="${esc(p)}"${p === r.ratio ? " selected" : ""}>${esc(p === "Default" ? "Game area: default" : p.split("  ")[0])}</option>`).join("") +
+        `</select></span>` : "") +
       `<button class="pill${r.lock_mouse ? " on" : ""}" data-lock="${r.index}" title="Lock the mouse to it while you play"><span>Mouse lock</span></button>` +
       `<button class="icon-x" data-forget="${r.index}" title="Forget"><span>&times;</span></button></div>`).concat(
       ignored.map((exe) =>
@@ -620,6 +648,7 @@
       const n = tmp.firstChild;
       n._html = html;
       if (el) el.replaceWith(n); else list.appendChild(n);
+      n.querySelectorAll("select").forEach(ddEnhance);
     });
     els.slice(rows.length).forEach((e) => e.remove());
   }
@@ -638,11 +667,11 @@
   const ghost = $("#ghost");
   function zoneAt(x, y) {
     const el = document.elementFromPoint(x, y);
-    const z = el && el.closest(".zone");
+    const z = el && el.closest(".zone, .dropzone");
     return z ? z.dataset.zone : null;
   }
   function highlight(zone) {
-    document.querySelectorAll("#stage .zone").forEach((z) => z.classList.toggle("hot", z.dataset.zone === zone));
+    document.querySelectorAll("#stage .zone, .dropzone").forEach((z) => z.classList.toggle("hot", z.dataset.zone === zone));
   }
   function beginPress(e, hwnd, from) {
     if (e.button !== 0) return;
@@ -697,8 +726,23 @@
     setMuteButton(b, { muted: mute });               // show it right away
     api("mute", { hwnd: b.dataset.mute, mute });
   });
+  $("#winlist").addEventListener("input", (e) => {
+    const r = e.target.closest(".vol");
+    if (!r) return;
+    r._busy = true;
+    r.style.setProperty("--v", r.value + "%");
+    setText(r.parentNode.querySelector(".vol-val"), r.value + "%");
+    clearTimeout(r._t);
+    r._t = setTimeout(() => api("set_volume", { hwnd: r.dataset.vol, level: r.value / 100 }), 120);
+  });
+  $("#winlist").addEventListener("change", (e) => {
+    const r = e.target.closest(".vol");
+    if (!r) return;
+    clearTimeout(r._t);
+    api("set_volume", { hwnd: r.dataset.vol, level: r.value / 100 }).then(() => { r._busy = false; });
+  });
   $("#winlist").addEventListener("pointerdown", (e) => {
-    if (e.target.closest(".mute-btn")) return;      // the speaker is a button, not a drag handle
+    if (e.target.closest(".mute-btn, .vol-pop")) return;      // the speaker / volume are controls, not drag handles
     const row = e.target.closest(".row");
     if (!row) return;
     e.preventDefault();
@@ -775,6 +819,10 @@
     if (!selected) return setStatus("First click a window in the list.", true);
     api("add_rule", { hwnd: selected, where: $("#rule-where").value, lock_mouse: $("#rule-lock").checked });
   });
+  $("#rulelist").addEventListener("change", (e) => {
+    const r = e.target.closest("[data-ratio]");
+    if (r) api("set_rule_ratio", { index: +r.dataset.ratio, preset: r.value });
+  });
   $("#rulelist").addEventListener("click", (e) => {
     const u = e.target.closest("[data-unignore]");
     if (u) return api("ignore", { exe: u.dataset.unignore, on: false });
@@ -795,6 +843,251 @@
 
   window.addEventListener("resize", () => S && layoutStage());
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && dragging) { press = null; dragging = null; ghost.classList.remove("show"); highlight(null); document.body.classList.remove("is-dragging"); } });
+
+
+  // =====================================================================
+  // Saved layouts, other monitor, play timer, updates, volume, per-game
+  // area, shortcuts and the first-run setup.
+  // =====================================================================
+  const kbd = (keys) => keys ? keys.split("+").map((k) => `<kbd>${esc(k)}</kbd>`).join("") : `<span class="hk-off-text">off</span>`;
+  const fmtTime = (s) => { const m = Math.floor(s / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m` : `${m} min`; };
+
+  // ---- a small dialog box ----
+  const modal = $("#modal"), modalBox = modal.querySelector(".modal-box");
+  let modalOnClose = null;
+  function openModal(html, cls) {
+    modalBox.className = "modal-box" + (cls ? " " + cls : "");
+    modalBox.innerHTML = html;
+    modal.hidden = false;
+    requestAnimationFrame(() => modal.classList.add("show"));
+    modalBox.querySelectorAll("select").forEach(ddEnhance);
+    const f = modalBox.querySelector("input[type=text]");
+    if (f) setTimeout(() => { f.focus(); f.select(); }, 60);
+  }
+  function closeModal() {
+    modal.classList.remove("show");
+    modal.hidden = true;
+    modalBox.innerHTML = "";
+    modalBox.className = "modal-box";
+    const cb = modalOnClose; modalOnClose = null;
+    if (cb) cb();
+  }
+  modal.addEventListener("pointerdown", (e) => { if (e.target === modal && !modalBox.classList.contains("wizard")) closeModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !modal.hidden && !capturing && !modalBox.classList.contains("wizard")) closeModal(); });
+
+  // ---- layouts bar under the monitor ----
+  function renderLayouts() {
+    const box = $("#layouts");
+    if (!changed("layouts", [S.layouts, S.active_layout, S.hotkeys.filter((h) => h.action.startsWith("layout:")).map((h) => h.keys)])) return;
+    const hk = {};
+    S.hotkeys.forEach((h) => { hk[h.action] = h.keys; });
+    box.innerHTML = `<span class="lay-label">Layouts</span>` + S.layouts.map((n, i) =>
+      `<button class="lay-chip${n === S.active_layout ? " on" : ""}" data-layout="${esc(n)}" title="Switch to ${esc(n)}${hk["layout:" + (i + 1)] ? " (" + esc(hk["layout:" + (i + 1)]) + ")" : ""}">` +
+      `<span>${esc(n)}</span><i class="lay-del" data-del-layout="${esc(n)}" title="Delete this layout">&times;</i></button>`).join("") +
+      `<button class="lay-add" id="lay-add" title="Save the game area and where your apps go as a layout"><span>+ Save layout</span></button>`;
+  }
+  $("#layouts").addEventListener("click", (e) => {
+    const del = e.target.closest("[data-del-layout]");
+    if (del) {
+      e.stopPropagation();
+      const n = del.dataset.delLayout;
+      openModal(`<h3>Delete "${esc(n)}"?</h3><p>The layout is removed. Your apps stay where they are now.</p>` +
+        `<div class="modal-btns"><button data-close><span>Cancel</span></button><button class="primary" id="m-del"><span>Delete</span></button></div>`);
+      $("#m-del").onclick = () => { api("delete_layout", { name: n }); closeModal(); };
+      return;
+    }
+    const chip = e.target.closest("[data-layout]");
+    if (chip) return api("apply_layout", { name: chip.dataset.layout });
+    if (e.target.closest("#lay-add")) saveLayoutDialog();
+  });
+  modal.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeModal(); });
+  function saveLayoutDialog() {
+    const def = S.active_layout || (S.layouts.length ? `Layout ${S.layouts.length + 1}` : "Gaming");
+    openModal(`<h3>Save layout</h3><p>Saves the game area and where your remembered apps go, so you can switch back in one click ` +
+      `(also from the tray icon, or with a shortcut).</p>` +
+      `<label class="field"><span>Name</span><input type="text" id="m-name" maxlength="40" value="${esc(def)}"></label>` +
+      (S.layouts.length ? `<p class="tip">Use an existing name to update that layout.</p>` : "") +
+      `<div class="modal-btns"><button data-close><span>Cancel</span></button><button class="primary" id="m-save"><span>Save</span></button></div>`);
+    const go = () => { const n = $("#m-name").value.trim(); if (!n) return; api("save_layout", { name: n }); closeModal(); };
+    $("#m-save").onclick = go;
+    $("#m-name").addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+  }
+
+  // ---- other monitor, play timer, update ----
+  function renderStagebar() {
+    const oz = $("#other-zone");
+    const other = S.other;
+    oz.style.display = other ? "" : "none";
+    const act = $("#act-other");
+    if (act) act.style.display = other ? "" : "none";
+    if (other) {
+      const [, , ow, oh] = other.rect;
+      setText(oz.querySelector("em"), `${other.device.replace(/^\\\\\.\\/, "")} · ${ow} × ${oh}`);
+      const apps = S.windows.filter((w) => w.zone === "other");
+      const sig = apps.map((w) => w.hwnd).join(",");
+      const box = oz.querySelector(".oz-apps");
+      if (box.dataset.sig !== sig) {
+        box.dataset.sig = sig;
+        box.innerHTML = apps.slice(0, 6).map((w) => `<span class="oz-app" title="${esc(w.title)}" data-hwnd="${w.hwnd}">${iconBadge(w)}</span>`).join("");
+      }
+      oz.classList.toggle("has-apps", apps.length > 0);
+    }
+    const pt = $("#playtime");
+    const p = S.play;
+    const ptxt = p && p.active ? `${p.game} · ${fmtTime(p.seconds)}` : "";
+    setText(pt, ptxt);
+    pt.classList.toggle("show", !!ptxt);
+    const up = $("#update-pill"), u = S.update || {};
+    const utxt = u.state === "downloading" ? "Downloading update..." : u.state === "installed" ? "Restarting..." :
+      u.available ? `Update to ${u.available}` : "";
+    setText(up.querySelector("span"), utxt);
+    up.classList.toggle("show", !!utxt);
+    up.classList.toggle("busy", u.state === "downloading" || u.state === "installed");
+  }
+  $("#update-pill").addEventListener("click", () => {
+    const u = S && S.update;
+    if (!u || !u.available || u.state === "downloading") return;
+    openModal(`<h3>Version ${esc(u.available)} is ready</h3><p>You have ${esc(u.current)}. The app downloads the new version and restarts by itself - your settings stay.</p>` +
+      (u.notes ? `<div class="notes">${esc(u.notes)}</div>` : "") +
+      `<div class="modal-btns"><button data-close><span>Later</span></button><button class="primary" id="m-upd"><span>Install now</span></button></div>`);
+    $("#m-upd").onclick = () => { api("install_update"); closeModal(); };
+  });
+
+  // ---- settings: while you play, updates, setup ----
+  function renderExtraSettings() {
+    const o = S.options;
+    $("#opt-dnd").checked = o.dnd_while_gaming !== false;
+    fillSelect($("#opt-remind"), (S.reminder_choices || []).map(([m, t]) => ({ value: String(m), label: t })), String(o.play_reminder_min || 0));
+    $("#opt-updates").checked = o.check_updates !== false;
+    setText($("#version"), `Version ${S.version || ""}`);
+    const others = S.monitors.filter((m) => m.device !== S.monitor);
+    $(".other-mon-field").style.display = others.length > 1 ? "" : "none";
+    if (others.length > 1) {
+      fillSelect($("#opt-other-mon"), [{ value: "", label: "Automatic" }].concat(others.map((m) => ({ value: m.device, label: m.label }))), o.other_monitor || "");
+    }
+  }
+  $("#opt-dnd").addEventListener("change", (e) => api("set_option", { key: "dnd_while_gaming", value: e.target.checked }));
+  $("#opt-remind").addEventListener("change", (e) => api("set_option", { key: "play_reminder_min", value: +e.target.value }));
+  $("#opt-other-mon").addEventListener("change", (e) => api("set_option", { key: "other_monitor", value: e.target.value }));
+  $("#opt-updates").addEventListener("change", (e) => api("set_option", { key: "check_updates", value: e.target.checked }));
+  $("#check-updates").addEventListener("click", () => api("check_updates"));
+  $("#run-setup").addEventListener("click", () => { wizardDismissed = false; api("run_setup"); });
+
+  // ---- shortcuts ----
+  let capturing = null;
+  function renderHotkeys() {
+    const list = $("#hk-list");
+    if (!changed("hotkeys", [S.hotkeys, capturing])) return;
+    list.innerHTML = S.hotkeys.map((h) =>
+      `<div class="hk-row${h.failed ? " failed" : ""}">` +
+      `<span class="hk-label">${esc(h.label)}${h.failed ? `<em>used by another program</em>` : ""}</span>` +
+      `<button class="hk-keys${capturing === h.action ? " capturing" : ""}" data-hk="${h.action}" title="Click, then press the new keys">` +
+      (capturing === h.action ? `<span class="hk-wait">Press the keys...</span>` : kbd(h.keys)) + `</button>` +
+      `<button class="hk-off" data-hk-off="${h.action}" title="Turn this shortcut off"${h.keys ? "" : " disabled"}><span>Off</span></button></div>`).join("");
+    // the short list at the bottom of the window (classic layout)
+    const keys = $("#keys");
+    if (keys) {
+      const k = {};
+      S.hotkeys.forEach((h) => { k[h.action] = h.keys; });
+      const line = (a, t) => k[a] ? `<div>${kbd(k[a])} ${t}</div>` : "";
+      keys.innerHTML = line("center", "to the middle (GAME for games)") + line("left", "left screen") + line("right", "right screen") +
+        line("restore", "back to normal") + line("lock", "lock mouse") + line("fps", "FPS counter") +
+        `<div><kbd>Alt</kbd><kbd>Tab</kbd> normal desktop &middot; click the game to go back</div>`;
+    }
+  }
+  const CODE_NAMES = { ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right", PageUp: "PageUp", PageDown: "PageDown",
+    Home: "Home", End: "End", Insert: "Insert", Delete: "Delete", Space: "Space", Enter: "Enter", Tab: "Tab", Backspace: "Backspace", Pause: "Pause" };
+  function keyName(e) {
+    const c = e.code || "";
+    if (/^Key[A-Z]$/.test(c)) return c.slice(3);
+    if (/^Digit[0-9]$/.test(c)) return c.slice(5);
+    if (/^Numpad[0-9]$/.test(c)) return "Num" + c.slice(6);
+    if (/^F([1-9]|1[0-9]|2[0-4])$/.test(c)) return c;
+    return CODE_NAMES[c] || null;
+  }
+  function stopCapture(save) {
+    if (!capturing) return;
+    const a = capturing;
+    capturing = null;
+    api("pause_hotkeys", { on: false });
+    if (save !== undefined) api("set_hotkey", { action: a, keys: save }); else if (S) renderHotkeys();
+  }
+  $("#hk-list").addEventListener("click", (e) => {
+    const off = e.target.closest("[data-hk-off]");
+    if (off) { stopCapture(); return api("set_hotkey", { action: off.dataset.hkOff, keys: "" }); }
+    const b = e.target.closest("[data-hk]");
+    if (!b) return;
+    if (capturing === b.dataset.hk) return stopCapture();
+    stopCapture();
+    capturing = b.dataset.hk;
+    api("pause_hotkeys", { on: true });     // so pressing keys that are already in use doesn't trigger them
+    renderHotkeys();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (!capturing) return;
+    e.preventDefault(); e.stopPropagation();
+    if (["Control", "Alt", "Shift", "Meta", "AltGraph", "OS"].includes(e.key)) return;
+    if (e.key === "Escape" && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) return stopCapture();
+    const name = keyName(e);
+    const mods = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Win"].filter(Boolean);
+    if (!name) return setStatus("That key can't be used - try a letter, number, arrow or F-key.");
+    if (!mods.length) return setStatus("Add Ctrl, Alt, Shift or Win - a single key would stop working everywhere else.");
+    stopCapture(mods.concat(name).join("+"));
+  }, true);
+  document.addEventListener("pointerdown", (e) => { if (capturing && !e.target.closest("#hk-list")) stopCapture(); });
+  $("#hk-reset").addEventListener("click", () => { stopCapture(); api("reset_hotkeys"); });
+
+  // ---- first-run setup ----
+  let wizardDismissed = false, wizardOpen = false;
+  function maybeOpenSetup() {
+    if (S.setup_needed && !wizardDismissed && !wizardOpen && modal.hidden) openSetup();
+  }
+  function openSetup() {
+    wizardOpen = true;
+    const st = { step: 0, monitor: S.monitor, preset: S.preset === "Custom" ? S.presets[0] : S.preset, apps: {},
+                 startup: !!S.startup, dnd: S.options.dnd_while_gaming !== false, updates: S.options.check_updates !== false };
+    const remembered = new Set(S.rules.map((r) => (r.app || "").toLowerCase()));
+    const apps = S.windows.filter((w) => w.exe && !w.is_game && !remembered.has(w.exe.toLowerCase())).slice(0, 10);
+    const spots = [["left", "Left"], ["right", "Right"]].concat(S.other ? [["other", "Other monitor"]] : []).concat([["", "Leave it"]]);
+    const draw = () => {
+      const dots = [0, 1, 2].map((i) => `<i class="${i === st.step ? "on" : i < st.step ? "done" : ""}"></i>`).join("");
+      let body = "";
+      if (st.step === 0) {
+        body = `<h3>Welcome to G9 Splitter</h3><p>It splits your wide monitor into <b>Left | Game | Right</b>: your game sits in the middle at a normal size, and apps like Discord and Spotify fill the sides.</p>` +
+          `<label class="field"><span>Which monitor?</span><select id="w-mon">${S.monitors.map((m) => `<option value="${esc(m.device)}"${m.device === st.monitor ? " selected" : ""}>${esc(m.label)}</option>`).join("")}</select></label>` +
+          `<label class="field"><span>How big should the game be? (shape of the middle)</span><select id="w-preset">${S.presets.filter((p) => p !== "Custom").map((p) => `<option${p === st.preset ? " selected" : ""}>${esc(p)}</option>`).join("")}</select></label>`;
+      } else if (st.step === 1) {
+        body = `<h3>Your apps</h3><p>Where should these go? They'll be put there every time they open. (Games are found by themselves and go in the middle.)</p>` +
+          (apps.length ? `<div class="w-apps">` + apps.map((w) => `<div class="w-app">${iconBadge(w)}<span class="w-name">${esc(w.title)}<em>${esc(w.exe)}</em></span>` +
+            `<span class="seg">` + spots.map(([z, t]) => `<button data-app="${w.hwnd}" data-spot="${z}" class="${(st.apps[w.hwnd] || "") === z ? "on" : ""}"><span>${t}</span></button>`).join("") + `</span></div>`).join("") + `</div>`
+            : `<p class="tip">No apps open right now - you can drag them onto the screens later.</p>`);
+      } else {
+        body = `<h3>A few options</h3>` +
+          `<label class="switch"><input type="checkbox" id="w-startup"${st.startup ? " checked" : ""}><i></i><span>Start with Windows (waits in the tray)</span></label>` +
+          `<label class="switch"><input type="checkbox" id="w-dnd"${st.dnd ? " checked" : ""}><i></i><span>Do Not Disturb while gaming</span></label>` +
+          `<label class="switch"><input type="checkbox" id="w-upd"${st.updates ? " checked" : ""}><i></i><span>Check for updates</span></label>` +
+          `<p class="tip">Tip: save your setup as a layout with "+ Save layout" under the monitor - switch layouts from the tray icon or with Ctrl+Alt+Shift+1, 2, 3...</p>`;
+      }
+      openModal(`<div class="w-steps">${dots}</div>${body}<div class="modal-btns"><button id="w-skip" class="link"><span>Skip</span></button><span class="spacer"></span>` +
+        (st.step ? `<button id="w-back"><span>Back</span></button>` : "") +
+        `<button class="primary" id="w-next"><span>${st.step === 2 ? "Done" : "Next"}</span></button></div>`, "wizard");
+      const grab = () => {
+        if ($("#w-mon")) st.monitor = $("#w-mon").value;
+        if ($("#w-preset")) st.preset = $("#w-preset").value;
+        if ($("#w-startup")) { st.startup = $("#w-startup").checked; st.dnd = $("#w-dnd").checked; st.updates = $("#w-upd").checked; }
+      };
+      modalBox.querySelectorAll("[data-spot]").forEach((b) => b.addEventListener("click", () => { st.apps[b.dataset.app] = b.dataset.spot; draw(); }));
+      $("#w-skip").onclick = () => { wizardDismissed = true; wizardOpen = false; closeModal(); api("skip_setup"); };
+      if ($("#w-back")) $("#w-back").onclick = () => { grab(); st.step--; draw(); };
+      $("#w-next").onclick = () => {
+        grab();
+        if (st.step < 2) { st.step++; return draw(); }
+        wizardDismissed = true; wizardOpen = false; closeModal();
+        api("finish_setup", { choices: { monitor: st.monitor, preset: st.preset, apps: st.apps, startup: st.startup, dnd: st.dnd, updates: st.updates } });
+      };
+    };
+    draw();
+  }
 
   document.querySelectorAll("select").forEach(ddEnhance);
   poll();

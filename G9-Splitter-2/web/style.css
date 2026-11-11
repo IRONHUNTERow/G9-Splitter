@@ -711,3 +711,121 @@ body.modern.flat-monitor .zone[data-zone="left"]::after, body.modern.flat-monito
 /* outline of the whole monitor - only on flat monitors (a curved one is shown by its side screens) */
 .monframe { position: absolute; display: none; pointer-events: none; border: 1px dashed color-mix(in srgb, var(--text) 28%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--text) 3%, transparent); }
 body.modern.flat-monitor .monframe { display: block; }
+
+/* =====================================================================
+   Layouts bar, other monitor, play time, update, volume, per-game area,
+   shortcuts, dialogs and the first-run setup. Built from the theme colours,
+   so every theme styles them.
+   ===================================================================== */
+.stagebar { display: flex; align-items: center; gap: 12px; margin-top: 8px; min-height: 34px; flex-wrap: wrap; }
+.layouts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.lay-label { font: var(--head-weight) 11px/1 var(--font-head); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+body[data-theme] .lay-chip, body[data-theme] .lay-add { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 12px; }
+body[data-theme] .lay-chip.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+body[data-theme] .lay-add { background: transparent; border-style: dashed; opacity: .8; }
+body[data-theme] .lay-add:hover { opacity: 1; }
+.lay-del { font-style: normal; display: none; width: 16px; height: 16px; line-height: 15px; text-align: center; border-radius: 50%; margin: 0 -4px 0 2px; font-size: 13px; opacity: .7; }
+.lay-chip:hover .lay-del { display: inline-block; }
+.lay-del:hover { opacity: 1; background: rgba(214,48,56,.9); color: #fff; }
+
+.dropzone.other-zone {
+  display: flex; align-items: center; gap: 10px; padding: 5px 12px 5px 8px; min-height: 34px; border-radius: var(--btn-radius);
+  border: 1px dashed color-mix(in srgb, var(--text) 35%, transparent); color: var(--muted); font-size: 12px;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.other-zone .oz-icon { width: 26px; height: 18px; border: 2px solid currentColor; border-radius: 3px; position: relative; flex: none; opacity: .8; }
+.other-zone .oz-icon::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 10px; height: 3px; margin-left: -5px; background: currentColor; }
+.other-zone .oz-text { display: flex; flex-direction: column; line-height: 1.15; }
+.other-zone .oz-text b { color: var(--text); font-weight: 600; }
+.other-zone .oz-text em { font-style: normal; font-size: 11px; }
+.other-zone .oz-apps { display: flex; gap: 4px; }
+.other-zone .oz-apps .badge { width: 22px; height: 22px; font-size: 11px; }
+.other-zone.has-apps { border-style: solid; }
+body.is-dragging .dropzone.other-zone { border-color: var(--accent); color: var(--text); }
+.dropzone.other-zone.hot { background: var(--zone-hot, var(--accent)); color: var(--zone-hot-text, var(--accent-text)); border-color: var(--accent); }
+.dropzone.other-zone.hot .oz-text b { color: inherit; }
+
+.playtime { display: none; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.playtime.show { display: inline-flex; }
+.playtime::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+body[data-theme] .update-pill { display: none; font-size: 12px; padding: 5px 12px; background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+body[data-theme] .update-pill.show { display: inline-flex; }
+body[data-theme] .update-pill.busy { opacity: .7; pointer-events: none; }
+
+/* volume: a small slider next to the speaker on each window card */
+body.modern .row.card > .vol-pop {
+  position: absolute; right: 38px; bottom: 8px; z-index: 3; height: 26px; display: flex; align-items: center; gap: 6px;
+  padding: 0 8px; border-radius: 6px; background: rgba(10,12,16,.72); border: 1px solid rgba(255,255,255,.18); color: #fff;
+  opacity: 0; pointer-events: none; transition: opacity .15s;
+}
+body.modern .row.card:hover > .vol-pop:not(.none), body.modern .row.card.selected > .vol-pop:not(.none), body.modern .row.card > .vol-pop:focus-within { opacity: 1; pointer-events: auto; }
+.vol-pop .vol-val { font: 600 11px var(--font-body); min-width: 30px; text-align: right; }
+input.vol { -webkit-appearance: none; appearance: none; width: 86px; height: 4px; border-radius: 4px; outline: none; cursor: pointer; padding: 0; border: 0;
+  background: linear-gradient(90deg, var(--accent) var(--v, 50%), rgba(255,255,255,.25) var(--v, 50%)); }
+input.vol::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px var(--accent); }
+
+/* per-game game area in Remembered */
+.ratio-pick { flex: 0 0 auto; }
+.ratio-pick .dd { width: 170px; }
+body[data-theme] .ratio-pick .dd-btn { padding: 4px 8px; font-size: 12px; }
+
+/* settings: while you play / updates / shortcuts */
+.extra-settings { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.extra-settings h3, .hotkeys-box h3 { margin: 6px 0 0; font: var(--head-weight) 13px/1.1 var(--font-head); letter-spacing: var(--head-spacing); text-transform: var(--head-transform); color: var(--head-color, var(--text)); }
+.hotkeys-box h3 em { font: 400 12px var(--font-body); text-transform: none; letter-spacing: 0; color: var(--muted); margin-left: 8px; }
+.extra-settings .field { width: 320px; }
+.update-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.update-row .version { color: var(--muted); font-size: 12px; }
+body.modern .settings-body .extra-settings, body.modern .settings-body .hotkeys-box { padding-top: 16px; border-top: 1px solid var(--card-border); }
+.help-panel .extra-settings, .help-panel .hotkeys-box { display: none; }
+body.modern .settings-body .extra-settings, body.modern .settings-body .hotkeys-box { display: flex; }
+.hotkeys-box { flex-direction: column; gap: 8px; }
+.hk-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 6px 26px; }
+.hk-row { display: flex; align-items: center; gap: 10px; min-height: 36px; }
+.hk-label { flex: 1; min-width: 0; font-size: 13px; }
+.hk-label em { display: block; font-style: normal; font-size: 11px; color: #f87171; }
+body[data-theme] .hk-keys { min-width: 170px; text-align: left; padding: 4px 8px; background: transparent; }
+body[data-theme] .hk-keys.capturing { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent); }
+.hk-wait { color: var(--accent); font-size: 12px; animation: hkBlink 1s infinite; }
+@keyframes hkBlink { 50% { opacity: .4; } }
+.hk-off-text { color: var(--muted); font-size: 12px; font-style: italic; }
+body[data-theme] .hk-off { padding: 4px 10px; font-size: 11px; opacity: .7; }
+body[data-theme] .hk-off[disabled] { opacity: .3; pointer-events: none; }
+.hk-row.failed .hk-keys kbd { border-color: #f87171; }
+.hk-foot { display: flex; align-items: center; gap: 16px; justify-content: space-between; flex-wrap: wrap; margin-top: 4px; }
+.help-panel .keys { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--muted); }
+
+/* dialogs */
+.modal { position: fixed; inset: 0; z-index: 400; display: grid; place-items: center; background: rgba(0,0,0,.55); backdrop-filter: blur(3px); opacity: 0; transition: opacity .18s; }
+.modal.show { opacity: 1; }
+.modal[hidden] { display: none; }
+.modal-box {
+  width: min(520px, calc(100vw - 40px)); max-height: calc(100vh - 80px); overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
+  background: var(--menu-bg, var(--panel)); color: var(--menu-text, var(--text)); border: 1px solid var(--card-border, var(--panel-border));
+  border-top: 3px solid var(--accent); padding: 22px 24px; box-shadow: 0 30px 80px rgba(0,0,0,.6); border-radius: var(--radius);
+  transform: translateY(8px); transition: transform .18s; user-select: text;
+}
+.modal.show .modal-box { transform: none; }
+.modal-box.wizard { width: min(640px, calc(100vw - 40px)); min-height: 380px; }
+.modal-box h3 { margin: 0; font: var(--head-weight) 20px/1.15 var(--font-head); letter-spacing: var(--head-spacing); text-transform: var(--head-transform); color: var(--head-color, inherit); }
+.modal-box p { margin: 0; color: var(--muted); }
+.modal-box p b { color: var(--text); }
+.modal-box .field input[type=text] { background: var(--field); color: var(--field-text); border: 1px solid var(--field-border); border-radius: var(--btn-radius); padding: 8px 10px; font-size: 14px; outline: none; text-transform: none; letter-spacing: 0; }
+.modal-box .field input[type=text]:focus { border-color: var(--accent); }
+.modal-box .notes { white-space: pre-wrap; font-size: 12px; color: var(--muted); background: var(--field); border: 1px solid var(--field-border); border-radius: 6px; padding: 10px; max-height: 180px; overflow-y: auto; }
+.modal-box .switch { margin: 2px 0; }
+.modal-btns { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: auto; padding-top: 6px; }
+body[data-theme] .modal-btns .link { background: transparent; border-color: transparent; opacity: .7; }
+body[data-theme] .modal-btns .link:hover { opacity: 1; }
+.w-steps { display: flex; gap: 6px; }
+.w-steps i { width: 26px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--text) 20%, transparent); }
+.w-steps i.on, .w-steps i.done { background: var(--accent); }
+.w-steps i.done { opacity: .5; }
+.w-apps { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; padding-right: 4px; }
+.w-app { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid var(--card-border, var(--panel-border)); border-radius: 6px; }
+.w-app .badge { width: 26px; height: 26px; }
+.w-name { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.w-name em { font-style: normal; font-size: 11px; color: var(--muted); }
+.seg { display: inline-flex; gap: 4px; flex: none; }
+body[data-theme] .seg button { padding: 4px 9px; font-size: 11px; }
+body[data-theme] .seg button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
