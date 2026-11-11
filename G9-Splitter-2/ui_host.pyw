@@ -12,7 +12,8 @@ import sys
 import time
 import traceback
 
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+FROZEN = bool(getattr(sys, "frozen", False))      # inside "G9 Splitter 2.exe"
+APP_DIR = os.path.dirname(os.path.abspath(sys.executable if FROZEN else __file__))
 LOG_PATH = os.path.join(APP_DIR, "g9_splitter_error.log")
 TITLE = "G9 Splitter"
 
@@ -107,6 +108,8 @@ def set_window_app_id(hwnd, app_id, command=None, name=None, icon=None):
 
 
 def relaunch_command(script):
+    if FROZEN:
+        return f'"{sys.executable}"'
     pw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
     return f'"{pw if os.path.exists(pw) else sys.executable}" "{script}"'
 
@@ -131,7 +134,7 @@ def set_icon(ico):
         user32.SendMessageW(hwnd, 0x80, 0, small)   # WM_SETICON, ICON_SMALL
         # pinning this window to the taskbar pins G9 Splitter 2 itself (not Python)
         set_window_app_id(hwnd, "OleJakob.G9Splitter2", relaunch_command(os.path.join(APP_DIR, "g9_splitter.pyw")),
-                          "G9 Splitter 2", ico + ",0")
+                          "G9 Splitter 2", (sys.executable if FROZEN else ico) + ",0")
     except Exception:
         log_error()
 
@@ -179,8 +182,8 @@ def main():
                 pw = os.path.join(os.path.dirname(exe), "pythonw.exe")
                 with open(LOG_PATH, "a", encoding="utf-8") as f:
                     f.write(time.strftime("%Y-%m-%d %H:%M:%S [ui] ") + "engine unreachable - restarting it\n")
-                subprocess.Popen([pw if os.path.exists(pw) else exe, os.path.join(APP_DIR, "g9_splitter.pyw"),
-                                  "--restarted", "--from-ui"], cwd=APP_DIR, close_fds=True,
+                cmd = [exe] if FROZEN else [pw if os.path.exists(pw) else exe, os.path.join(APP_DIR, "g9_splitter.pyw")]
+                subprocess.Popen(cmd + ["--restarted", "--from-ui"], cwd=APP_DIR, close_fds=True,
                                  creationflags=0x00000008 | 0x00000200)   # detached
             except Exception:
                 log_error()

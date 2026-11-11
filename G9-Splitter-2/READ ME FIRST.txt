@@ -5,6 +5,32 @@ This is the main version, with menus that look like the games. The simpler
 original is in the "classic" folder. Don't run both at the same time - they
 would fight over the same hotkeys and windows.
 
+NEW IN 2.1
+  Saved layouts   Save the game area + where your apps go as a layout
+                  ("+ Save layout" under the monitor, or "Saved layout" in the
+                  classic window). Switch with one click, from the tray icon,
+                  or with Ctrl+Alt+Shift+1 ... 9.
+  Per-game size   In Remembered apps, give a game its own game area (e.g. one
+                  game in 21:9, another in 16:9). The side screens follow.
+  Other monitor   Got a second screen? Drop a window on "Other monitor" (or
+                  Ctrl+Alt+PageDown) and it fills that screen.
+  Volume          Point at the speaker on a window to set its volume
+                  (classic: the slider under the window list).
+  Do Not Disturb  Windows' Do Not Disturb turns on while a game is in the
+                  middle and off again when you stop (Settings).
+  Play timer      Shows how long you've been playing; an optional break
+                  reminder pops up after the time you pick (Settings).
+  Shortcuts       Settings > Shortcuts (classic: "Change shortcuts...") lists
+                  every shortcut - click one and press new keys.
+  Tray menu       Right-click the tray icon: layouts, "game above the
+                  taskbar", auto-place and Do Not Disturb on/off.
+  Updates         The app checks GitHub for new versions and installs them in
+                  one click ("Update to ..." under the monitor).
+  First start     A short setup asks for your monitor, game size and where
+                  your apps go ("Run the setup again" in Settings).
+  .exe version    The GitHub releases page also has G9-Splitter-2.exe (and a
+                  classic .exe) - no Python needed.
+
 START IT
   Double-click "Start G9 Splitter 2.bat".
   The first time it may install Python 3.12 and a small free add-on called
@@ -109,6 +135,7 @@ MUTE A PROGRAM
   works too.
 
 HOTKEYS
+  You can change them all in Settings > Shortcuts.
   Ctrl+Alt+Up      current window to the middle (GAME if it's a game, else Middle)
   Ctrl+Alt+Left    current window to the left screen
   Ctrl+Alt+Right   current window to the right screen

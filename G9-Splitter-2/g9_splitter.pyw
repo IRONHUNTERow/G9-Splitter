@@ -20,7 +20,11 @@ import time
 import traceback
 
 APP_NAME = "G9 Splitter"
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+APP_VERSION = "2.1.0"
+GITHUB_REPO = "IRONHUNTERow/G9-Splitter"
+FROZEN = bool(getattr(sys, "frozen", False))      # running as the .exe (built with PyInstaller)
+APP_DIR = os.path.dirname(os.path.abspath(sys.executable if FROZEN else __file__))
+RES_DIR = getattr(sys, "_MEIPASS", APP_DIR)        # the web page and icons packed inside the .exe
 CONFIG_PATH = os.path.join(APP_DIR, "g9_splitter_config.json")
 LOG_PATH = os.path.join(APP_DIR, "g9_splitter_error.log")
 
@@ -121,6 +125,8 @@ def set_window_app_id(hwnd, app_id, command=None, name=None, icon=None):
 
 
 def relaunch_command(script):
+    if FROZEN:
+        return f'"{sys.executable}"'
     pw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
     return f'"{pw if os.path.exists(pw) else sys.executable}" "{script}"'
 
@@ -180,9 +186,11 @@ def wake_running_copy(tip):
         return False
 
 
-def report_last_crash(exe_hint="pythonw"):
+def report_last_crash(exe_hint=None):
     """If Windows recorded G9 Splitter crashing (Event Viewer > Application Error), copy that into
     g9_splitter_run.log - it names the part that crashed, which Python itself can't always see."""
+    exe_hint = exe_hint or (os.path.splitext(os.path.basename(sys.executable))[0] if FROZEN else "pythonw")
+
     def work():
         try:
             import subprocess
@@ -288,8 +296,9 @@ def start_watchdog(root, what):
                     where = "?"
                 run_log(f"not responding for {stuck:.0f}s, at: {where[-700:]}")
     threading.Thread(target=watch, daemon=True).start()
-ICON_ICO = os.path.join(APP_DIR, "g9_splitter.ico")
-ICON_PNG = os.path.join(APP_DIR, "g9_splitter.png")
+ICON_ICO = os.path.join(RES_DIR, "g9_splitter.ico")
+ICON_PNG = os.path.join(RES_DIR, "g9_splitter.png")
+SHELL_ICON = sys.executable if FROZEN else ICON_ICO     # for shortcuts (a file that stays put)
 
 DEFAULT_CONFIG = {
     "monitor": "",          # device name like \\.\DISPLAY1 ; "" = pick widest
@@ -312,8 +321,9 @@ DEFAULT_CONFIG = {
     "theme": "",
 }
 
-ZONE_LABELS = {"left": "LEFT SCREEN", "center": "GAME", "right": "RIGHT SCREEN"}
-ZONE_NAMES = {"left": "the left screen", "center": "the middle", "right": "the right screen"}
+ZONE_LABELS = {"left": "LEFT SCREEN", "center": "GAME", "right": "RIGHT SCREEN", "other": "OTHER MONITOR"}
+ZONE_NAMES = {"left": "the left screen", "center": "the middle", "right": "the right screen",
+              "other": "your other monitor"}
 
 # Shape presets for the middle (game) area: name -> width/height ratio. The game area keeps
 # its shape on any monitor - if it would be too wide it shrinks until it fits.
@@ -850,9 +860,10 @@ def key_down(vk):
 class HotkeyThread(threading.Thread):
     """Registers global hotkeys + watches window drags. Pushes events into a queue."""
 
-    def __init__(self, q):
+    def __init__(self, q, bindings=None):
         super().__init__(daemon=True)
         self.q = q
+        self.bindings = bindings if bindings is not None else HOTKEYS
         self.tid = None
         self.failed = []
         self.ready = threading.Event()
@@ -867,7 +878,7 @@ class HotkeyThread(threading.Thread):
 
     def run(self):
         self.tid = GetCurrentThreadId()
-        for hk_id, (mods, vk, _action, name) in HOTKEYS.items():
+        for hk_id, (mods, vk, _action, name) in self.bindings.items():
             if not RegisterHotKey(None, hk_id, mods | MOD_NOREPEAT, vk):
                 self.failed.append(name)
         self._proc = WINEVENTPROC(self.on_win_event)   # keep a reference!
@@ -877,11 +888,11 @@ class HotkeyThread(threading.Thread):
         self.ready.set()
         msg = wt.MSG()
         while GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-            if msg.message == WM_HOTKEY and msg.wParam in HOTKEYS:
-                self.q.put(HOTKEYS[msg.wParam][2])
+            if msg.message == WM_HOTKEY and msg.wParam in self.bindings:
+                self.q.put(self.bindings[msg.wParam][2])
         if hook:
             UnhookWinEvent(hook)
-        for hk_id in HOTKEYS:
+        for hk_id in self.bindings:
             UnregisterHotKey(None, hk_id)
 
     def stop(self):
@@ -895,8 +906,16 @@ def startup_file():
 
 
 def pythonw_path():
+    """What starts the app: the .exe itself, or pythonw (no console window) + this script."""
+    if FROZEN:
+        return sys.executable
     cand = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
     return cand if os.path.exists(cand) else sys.executable
+
+
+def script_arg():
+    """The script to give pythonw ('' for the .exe)."""
+    return "" if FROZEN else f'"{os.path.abspath(__file__)}"'
 
 
 # ---------------------------------------------------------------------------
@@ -910,7 +929,7 @@ RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
 def _startup_args():
-    return f'"{os.path.abspath(__file__)}" --tray'
+    return (script_arg() + " --tray").strip()
 
 
 def run_elevated(exe, params, timeout=60):
@@ -1067,17 +1086,45 @@ class _NOTIFYICONDATAW(ctypes.Structure):
 
 
 class TrayIcon:
+    """The icon next to the clock. It has its own thread and message loop, so clicking it never
+    runs code inside the app's window loop (doing that is what crashed the app before).
+    Click = open the app, right-click = menu. All callbacks must be thread-safe (they only
+    put a request in the app's queue)."""
     WM_TRAY = 0x8000 + 21                       # WM_APP + 21
-    ID_OPEN, ID_QUIT = 1, 2
 
-    def __init__(self, tip, icon_path, on_open, on_quit, open_label):
+    def __init__(self, tip, icon_path, on_open, on_quit, open_label, menu=None, on_menu=None):
         self.tip, self.on_open, self.on_quit, self.open_label = tip, on_open, on_quit, open_label
+        self.menu_items, self.on_menu = menu, on_menu
         # Windows talks to the window while it's being created, so everything the
         # message handler looks at has to exist before that.
         self.ok = False
         self.hwnd = None
         self.hicon = None
         self.taskbar_created = 0
+        self.tries = 0
+        self._ready = threading.Event()
+        self._error = None
+        self._thread = threading.Thread(target=self._thread_main, args=(icon_path,), name="g9-tray", daemon=True)
+        self._thread.start()
+        self._ready.wait(15)
+        if self._error:
+            raise self._error
+
+    def _thread_main(self, icon_path):
+        try:
+            self._create(icon_path)
+        except Exception as e:
+            self._error = e
+            self._ready.set()
+            return
+        self._ready.set()
+        msg = (ctypes.c_byte * 64)()
+        u32 = self.u32
+        while u32.GetMessageW(msg, None, 0, 0) > 0:
+            u32.TranslateMessage(msg)
+            u32.DispatchMessageW(msg)
+
+    def _create(self, icon_path):
         u32 = self.u32 = ctypes.WinDLL("user32", use_last_error=True)
         s32 = self.s32 = ctypes.WinDLL("shell32", use_last_error=True)
         k32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -1111,6 +1158,12 @@ class TrayIcon:
         u32.RegisterWindowMessageW.argtypes = [ctypes.c_wchar_p]
         u32.LoadIconW.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
         u32.LoadIconW.restype = ctypes.c_void_p
+        u32.GetMessageW.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint]
+        u32.TranslateMessage.argtypes = [ctypes.c_void_p]
+        u32.DispatchMessageW.argtypes = [ctypes.c_void_p]
+        u32.DispatchMessageW.restype = LRESULT
+        u32.SetTimer.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint, ctypes.c_void_p]
+        u32.KillTimer.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
         s32.Shell_NotifyIconW.argtypes = [ctypes.c_uint32, ctypes.POINTER(_NOTIFYICONDATAW)]
         k32.GetModuleHandleW.restype = ctypes.c_void_p
         k32.GetModuleHandleW.argtypes = [ctypes.c_wchar_p]
@@ -1119,11 +1172,11 @@ class TrayIcon:
         hinst = k32.GetModuleHandleW(None)
         cls = WNDCLASSW()
         cls.lpfnWndProc, cls.hInstance = self._proc, hinst
-        cls.lpszClassName = tray_class(tip) + str(os.getpid())     # (another start finds us by this)
+        cls.lpszClassName = tray_class(self.tip) + str(os.getpid())     # (another start finds us by this)
         if not u32.RegisterClassW(ctypes.byref(cls)):
             raise OSError("RegisterClassW failed")
         self._cls = cls
-        self.hwnd = u32.CreateWindowExW(0, cls.lpszClassName, tip, 0, 0, 0, 0, 0, None, None, hinst, None)
+        self.hwnd = u32.CreateWindowExW(0, cls.lpszClassName, self.tip, 0, 0, 0, 0, 0, None, None, hinst, None)
         if not self.hwnd:
             raise OSError("CreateWindowExW failed")
         self.taskbar_created = u32.RegisterWindowMessageW("TaskbarCreated") or 0
@@ -1131,11 +1184,9 @@ class TrayIcon:
         self.hicon = (u32.LoadImageW(None, icon_path, 1, cx, cy, 0x10) if icon_path and os.path.exists(icon_path)
                       else None) or u32.LoadIconW(None, ctypes.c_void_p(32512))
         self.ok = self._add()
-        self.tries = 0
         if not self.ok:
             # Right after you sign in the taskbar may not be ready yet: try again every 2 seconds.
             run_log("tray icon: taskbar not ready yet - retrying")
-            u32.SetTimer.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint, ctypes.c_void_p]
             u32.SetTimer(self.hwnd, 7, 2000, None)
 
     def _data(self, flags):
@@ -1162,27 +1213,51 @@ class TrayIcon:
                 self.s32.Shell_NotifyIconW(2, ctypes.byref(self._data(0)))   # NIM_DELETE
                 self.ok = False
             if self.hwnd:
-                self.u32.DestroyWindow(self.hwnd)
-                self.hwnd = None
+                self.u32.PostMessageW(self.hwnd, 0x0010, 0, 0)      # WM_CLOSE: its own thread closes it
         except Exception:
             log_error()
 
+    def _items(self):
+        try:
+            if self.menu_items:
+                return self.menu_items()
+        except Exception:
+            log_error()
+        return [("item", "open", self.open_label, False), ("sep",), ("item", "quit", "Quit " + self.tip, False)]
+
     def _menu(self):
         u32 = self.u32
+        keys = {}
+
+        def build(menu, items):
+            for it in items:
+                if it[0] == "sep":
+                    u32.AppendMenuW(menu, 0x800, 0, None)                       # MF_SEPARATOR
+                elif it[0] == "sub":
+                    sub = u32.CreatePopupMenu()
+                    build(sub, it[2])
+                    u32.AppendMenuW(menu, 0x10 | (0 if it[2] else 0x1), sub, it[1])   # MF_POPUP (grey if empty)
+                else:
+                    _, key, label, checked = it[:4]
+                    enabled = it[4] if len(it) > 4 else True
+                    cid = len(keys) + 1
+                    keys[cid] = key
+                    u32.AppendMenuW(menu, (0x8 if checked else 0) | (0 if enabled else 0x1), cid, label)
         menu = u32.CreatePopupMenu()
-        u32.AppendMenuW(menu, 0, self.ID_OPEN, self.open_label)
-        u32.AppendMenuW(menu, 0x800, 0, None)                  # separator
-        u32.AppendMenuW(menu, 0, self.ID_QUIT, "Quit " + self.tip)
+        build(menu, self._items())
         pt = (ctypes.c_long * 2)()
         u32.GetCursorPos(pt)
         u32.SetForegroundWindow(self.hwnd)                     # so the menu closes when you click away
         cmd = u32.TrackPopupMenu(menu, 0x0100 | 0x0002, pt[0], pt[1], 0, self.hwnd, None)
         u32.PostMessageW(self.hwnd, 0, 0, 0)
         u32.DestroyMenu(menu)
-        if cmd == self.ID_OPEN:
+        key = keys.get(cmd)
+        if key == "open":
             self._open()
-        elif cmd == self.ID_QUIT:
+        elif key == "quit":
             self.on_quit()
+        elif key and self.on_menu:
+            self.on_menu(key)
 
     def _open(self):
         try:   # the click gives us the right to bring a window to the front - pass it on to the app window
@@ -1208,9 +1283,12 @@ class TrayIcon:
                 if not self.ok:
                     self.ok = self._add()
                 if self.ok or self.tries > 60:
-                    self.u32.KillTimer.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
                     self.u32.KillTimer(hwnd, 7)
                     run_log(f"tray icon: {'added' if self.ok else 'gave up'} after {self.tries * 2}s")
+                return 0
+            if msg == 0x0002:                                  # WM_DESTROY: end this thread's loop
+                self.hwnd = None
+                ctypes.windll.user32.PostQuitMessage(0)
                 return 0
         except Exception:
             log_error()
@@ -1223,7 +1301,8 @@ class TrayIcon:
 # Version 2 engine: no visible Tk window. A hidden Tk root is only used as a
 # timer loop and for the "show zones on my monitor" boxes.
 # ---------------------------------------------------------------------------
-WEB_DIR = os.path.join(APP_DIR, "web")
+WEB_DIR = os.path.join(RES_DIR, "web")
+UPDATE_EXE, UPDATE_ZIP = "G9-Splitter-2.exe", "G9-Splitter-2.zip"     # release downloads
 UI_HOST = os.path.join(APP_DIR, "ui_host.pyw")
 LOCK_PATH = os.path.join(APP_DIR, ".running")
 SHORTCUT_NAME = "G9 Splitter 2.lnk"
@@ -1232,6 +1311,7 @@ ZONE_CHOICES = [  # (label, zone, borderless)
     ("Middle", "center", False),
     ("Left screen", "left", False),
     ("Right screen", "right", False),
+    ("Other monitor", "other", False),            # your other screen (filled)
     ("Ignored (full screen)", "ignore", False),   # not a spot: left completely alone
 ]
 
@@ -1622,6 +1702,9 @@ class AudioMixer:
         self.muted = set()          # programs you muted here (lower-case exe names)
         self.seen = {}              # exe -> process ids we already muted (new ones get muted too)
         self.state = {}             # exe -> True muted / False has sound, not muted
+        self.volumes = {}           # exe -> volume 0..1 (as in Windows' volume mixer)
+        self._busy = False          # a background read is already on its way
+        self._slow_logged = 0.0
         self.exe_cache = {}
         self.trace = []             # step-by-step record of the last read (written to the audio log)
         self.logged_start = False
@@ -1645,16 +1728,24 @@ class AudioMixer:
                 log_error()
             done.set()
 
-    def _run(self, fn, default=None):
+    def _ensure_thread(self):
         if self._thread is None:
             self._q = queue.Queue()
             self._thread = threading.Thread(target=self._worker, name="g9-audio", daemon=True)
             self._thread.start()
+
+    def _run(self, fn, default=None, wait=4):
+        self._ensure_thread()
         box, done = {}, threading.Event()
         self._q.put((fn, box, done))
-        if not done.wait(5):
+        if not done.wait(wait):
             return default
         return box.get("result", default)
+
+    def _post(self, fn):
+        """Run on the audio thread without waiting for it (the app never freezes on a slow mixer)."""
+        self._ensure_thread()
+        self._q.put((fn, {}, threading.Event()))
 
     # ----- raw Core Audio (only ever called on the audio thread) -----
     def _hr(self, hr):
@@ -1794,6 +1885,14 @@ class AudioMixer:
     def _set_mute(self, vol, mute):
         return _com(vol, 5, ctypes.c_int, ctypes.c_void_p)(vol, 1 if mute else 0, None)
 
+    def _get_volume(self, vol):
+        f = ctypes.c_float()
+        _com(vol, 4, ctypes.POINTER(ctypes.c_float))(vol, ctypes.byref(f))
+        return float(f.value)
+
+    def _set_volume(self, vol, level):
+        return _com(vol, 3, ctypes.c_float, ctypes.c_void_p)(vol, float(level), None)
+
     def _open(self):
         if self.ok is False:
             return None
@@ -1820,13 +1919,38 @@ class AudioMixer:
 
     # ----- what the app uses (safe to call from any thread) -----
     def refresh(self):
-        """Read every program's mute state, and mute new sound from programs you muted."""
-        return self._run(self._refresh, self.state)
+        """Ask for a fresh read of every program's sound (mutes new sound from programs you muted).
+        Doesn't wait: returns what's known now - the app never freezes on a slow volume mixer."""
+        if not self._busy:
+            self._busy = True
+
+            def job():
+                t0 = time.time()
+                try:
+                    self._refresh()
+                finally:
+                    self._busy = False
+                    took = time.time() - t0
+                    if took > 3 and time.time() - self._slow_logged > 600:
+                        self._slow_logged = time.time()
+                        run_log(f"Windows' volume mixer took {took:.1f}s to answer")
+            self._post(job)
+        return self.state
 
     def set_muted(self, exe, mute):
         """Mute / unmute a program everywhere. Returns how many of its sound streams were changed
         (0 = it isn't making sound right now), or None if Windows' mixer can't be reached."""
         return self._run(lambda: self._set_muted(exe, mute), None)
+
+    def set_volume(self, exe, level):
+        """Set a program's volume (0..1) on every speaker/headset. Returns how many sound streams
+        were changed, or None if Windows' mixer can't be reached."""
+        level = max(0.0, min(1.0, float(level)))
+        return self._run(lambda: self._set_volume_all(exe, level), None, wait=3)
+
+    def volume_of(self, exe):
+        """0..1, or None if it isn't making sound right now."""
+        return self.volumes.get((exe or "").lower())
 
     def is_muted(self, exe):
         """True muted, False has sound, None no sound right now."""
@@ -1839,6 +1963,7 @@ class AudioMixer:
             self.state = {}
             return self.state
         state = {}
+        volumes = {}
         try:
             for exe, pid, vol in sess:
                 if not exe:
@@ -1847,6 +1972,10 @@ class AudioMixer:
                     self._set_mute(vol, True)           # it started a new sound stream - keep it quiet
                     self.seen[exe].add(pid)
                 state[exe] = state.get(exe, True) and self._get_mute(vol)
+                try:
+                    volumes[exe] = max(volumes.get(exe, 0.0), self._get_volume(vol))
+                except Exception:
+                    pass
         except Exception:
             log_error()
         finally:
@@ -1862,7 +1991,26 @@ class AudioMixer:
         for exe in self.muted:
             state.setdefault(exe, True)     # no sound yet - it'll be muted as soon as it makes some
         self.state = state
+        self.volumes = volumes
         return state
+
+    def _set_volume_all(self, exe, level):
+        exe = (exe or "").lower()
+        sess = self._open()
+        if sess is None or not exe:
+            return None
+        changed = 0
+        try:
+            for e, pid, vol in sess:
+                if e == exe:
+                    self._set_volume(vol, level)
+                    changed += 1
+        finally:
+            for _, _, vol in sess:
+                _release(vol)
+        if changed:
+            self.volumes[exe] = level
+        return changed
 
     def _set_muted(self, exe, mute):
         exe = (exe or "").lower()
@@ -1890,8 +2038,675 @@ class AudioMixer:
         else:
             self.muted.discard(exe)
             self.seen.pop(exe, None)
-        self._refresh()
+        state = dict(self.state)
+        if changed or mute:
+            state[exe] = bool(mute)
+        self.state = state
         return changed
+
+
+
+# ---------------------------------------------------------------------------
+# Hotkeys you can change. Stored as text like "Ctrl+Alt+Up" in the config.
+# ---------------------------------------------------------------------------
+MOD_WIN, MOD_SHIFT = 0x8, 0x4
+HOTKEY_ACTIONS = [   # (action, what it does, default keys)
+    ("center", "Put the window you're in in the middle", "Ctrl+Alt+Up"),
+    ("left", "Put it on the left screen", "Ctrl+Alt+Left"),
+    ("right", "Put it on the right screen", "Ctrl+Alt+Right"),
+    ("restore", "Give it back its old size and place", "Ctrl+Alt+Down"),
+    ("other", "Move it to your other monitor", "Ctrl+Alt+PageDown"),
+    ("lock", "Lock / unlock the mouse to it", "Ctrl+Alt+L"),
+    ("fps", "FPS counter on / off", "Ctrl+Alt+F"),
+    ("open", "Open G9 Splitter", "Ctrl+Alt+G"),
+] + [(f"layout:{i}", f"Switch to saved layout {i}", f"Ctrl+Alt+Shift+{i}") for i in range(1, 10)]
+_HK_KEYS = {**{chr(c): c for c in range(0x41, 0x5B)}, **{str(d): 0x30 + d for d in range(10)},
+            **{f"F{n}": 0x6F + n for n in range(1, 25)}, **{f"Num{d}": 0x60 + d for d in range(10)},
+            "Left": 0x25, "Up": 0x26, "Right": 0x27, "Down": 0x28, "PageUp": 0x21, "PageDown": 0x22,
+            "Home": 0x24, "End": 0x23, "Insert": 0x2D, "Delete": 0x2E, "Space": 0x20, "Pause": 0x13,
+            "Enter": 0x0D, "Tab": 0x09, "Backspace": 0x08}
+_HK_MODS = {"ctrl": MOD_CONTROL, "control": MOD_CONTROL, "alt": MOD_ALT, "shift": MOD_SHIFT, "win": MOD_WIN}
+
+
+def parse_hotkey(text):
+    """'Ctrl+Alt+Up' -> (modifiers, virtual key), or None if it isn't a usable shortcut."""
+    if not text:
+        return None
+    mods, key = 0, None
+    for part in [p.strip() for p in str(text).split("+") if p.strip()]:
+        low = part.lower()
+        if low in _HK_MODS:
+            mods |= _HK_MODS[low]
+        else:
+            name = next((k for k in _HK_KEYS if k.lower() == low), None)
+            if name is None or key is not None:
+                return None
+            key = _HK_KEYS[name]
+    if key is None or not mods:          # a plain key would stop it working everywhere else
+        return None
+    return mods, key
+
+
+def format_hotkey(text):
+    """Tidy spelling: 'alt+ctrl+up' -> 'Ctrl+Alt+Up'."""
+    p = parse_hotkey(text)
+    if not p:
+        return ""
+    mods, vk = p
+    names = [n for n, m in (("Ctrl", MOD_CONTROL), ("Alt", MOD_ALT), ("Shift", MOD_SHIFT), ("Win", MOD_WIN))
+             if mods & m]
+    return "+".join(names + [next(k for k, v in _HK_KEYS.items() if v == vk)])
+
+
+def hotkey_text(cfg, action):
+    """The keys for an action, as you'd type them ("" = off)."""
+    mine = cfg.get("hotkeys") or {}
+    if action in mine:
+        return format_hotkey(mine[action])
+    return next((d for a, _l, d in HOTKEY_ACTIONS if a == action), "")
+
+
+def hotkey_bindings(cfg):
+    """{id: (modifiers, key, action, name)} for HotkeyThread."""
+    out, used = {}, set()
+    for i, (action, _label, _default) in enumerate(HOTKEY_ACTIONS, start=1):
+        text = hotkey_text(cfg, action)
+        p = parse_hotkey(text)
+        if p and p not in used:
+            used.add(p)
+            out[i] = (p[0], p[1], action, text)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Do Not Disturb while you play. Windows has no public switch for it, so this uses the same
+# internal signal ("quiet hours") that the notification centre listens to. It only ever turns
+# off what it turned on itself.
+# ---------------------------------------------------------------------------
+class QuietHours:
+    STATE = 0x0D83063EA3BF1C75        # WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED
+
+    def __init__(self):
+        self.ours = False
+        self.failed = False
+
+    def _nt(self):
+        nt = ctypes.WinDLL("ntdll")
+        q, u = nt.NtQueryWnfStateData, nt.NtUpdateWnfStateData
+        q.restype = u.restype = ctypes.c_long
+        q.argtypes = [ctypes.POINTER(ctypes.c_uint64), ctypes.c_void_p, ctypes.c_void_p,
+                      ctypes.POINTER(ctypes.c_uint32), ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+        u.argtypes = [ctypes.POINTER(ctypes.c_uint64), ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p,
+                      ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32]
+        return q, u
+
+    def get(self):
+        """0 = off, 1 = priority only, 2 = alarms only (None if Windows won't say)."""
+        try:
+            q, _ = self._nt()
+            name, stamp = ctypes.c_uint64(self.STATE), ctypes.c_uint32()
+            buf, size = ctypes.c_uint32(), ctypes.c_uint32(4)
+            st = q(ctypes.byref(name), None, None, ctypes.byref(stamp), ctypes.byref(buf), ctypes.byref(size))
+            return int(buf.value) if st >= 0 else None
+        except Exception:
+            return None
+
+    def _set(self, value):
+        _, u = self._nt()
+        name, buf = ctypes.c_uint64(self.STATE), ctypes.c_uint32(value)
+        return u(ctypes.byref(name), ctypes.byref(buf), 4, None, None, 0, 0)
+
+    def turn_on(self):
+        if self.ours or self.failed:
+            return
+        now = self.get()
+        if now:                       # you already have it on - leave it alone
+            return
+        try:
+            st = self._set(1)
+        except Exception:
+            st = -1
+        if st >= 0 and self.get() == 1:
+            self.ours = True
+            run_log("Do Not Disturb: on while you play")
+        else:
+            self.failed = True
+            run_log(f"Do Not Disturb: Windows didn't accept the switch (status {st & 0xFFFFFFFF:#x})")
+
+    def turn_off(self):
+        if not self.ours:
+            return
+        self.ours = False
+        try:
+            if self.get() == 1:
+                self._set(0)
+            run_log("Do Not Disturb: off again")
+        except Exception:
+            log_error()
+
+
+# ---------------------------------------------------------------------------
+# Updates from GitHub: a new version is published there as a "release" (built automatically).
+# ---------------------------------------------------------------------------
+def _version_tuple(v):
+    out = []
+    for part in str(v).lstrip("vV").split("."):
+        num = "".join(ch for ch in part if ch.isdigit())
+        out.append(int(num) if num else 0)
+    return tuple(out + [0] * (3 - len(out)))
+
+
+def _http_get(url, timeout=20):
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": f"G9-Splitter/{APP_VERSION}",
+                                               "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+# ---------------------------------------------------------------------------
+# Features shared by both versions: saved layouts, per-game sizes, your other monitor, play
+# timer + reminder, Do Not Disturb while gaming, hotkeys you can change, the tray menu,
+# per-app volume, update check and the first-run setup. The class using this provides:
+# cfg, root, windows, monitors, mon_idx, last_apply, paused, mixer, tray, hotkeys, zones(),
+# place(), restore(), set_status(), is_game_window(), looks_like_game(), win_info(),
+# post(item) (thread-safe: puts an item in its queue) and show_app().
+# ---------------------------------------------------------------------------
+LAYOUT_KEYS = ("game_ratio", "game_height_pct", "center_width", "center_height", "game_position", "game_valign")
+REMINDER_CHOICES = [(0, "Off"), (30, "After 30 minutes"), (60, "After 1 hour"), (90, "After 1.5 hours"),
+                    (120, "After 2 hours"), (180, "After 3 hours")]
+
+
+def fmt_duration(seconds):
+    m = int(seconds // 60)
+    return f"{m // 60}h {m % 60:02d}m" if m >= 60 else f"{m} min"
+
+
+class FeaturesMixin:
+    def features_init(self, config_existed):
+        cfg = self.cfg
+        cfg.setdefault("layouts", [])
+        cfg.setdefault("active_layout", "")
+        cfg.setdefault("hotkeys", {})
+        cfg.setdefault("dnd_while_gaming", True)
+        cfg.setdefault("play_reminder_min", 0)
+        cfg.setdefault("check_updates", True)
+        cfg.setdefault("other_monitor", "")
+        if "setup_done" not in cfg:            # people who already used the app don't need the setup
+            cfg["setup_done"] = bool(config_existed)
+        self.quiet = QuietHours()
+        self.play = {"exe": "", "title": "", "start": 0.0, "last": 0.0, "reminded": 0}
+        self.playing = False
+        self.game_override = None              # shape of the game that's running, if it has its own
+        self.update_info = None                # {"version", "notes", "assets"} when there's a newer one
+        self.update_state = ""                 # "", "checking", "downloading", "installed", "failed"
+        if cfg.get("dnd_set_by_us"):           # the app stopped while you were playing - undo it
+            self.quiet.ours = True
+            self.quiet.turn_off()
+            cfg["dnd_set_by_us"] = False
+        save_config(cfg)
+        self.root.after(1500, self.gaming_tick)
+        self.root.after(20000, self._update_tick)
+
+    # ----- queue: things other threads ask for -----
+    def feature_event(self, item):
+        """item = ("feature", name, arg) from the tray / update threads."""
+        _, name, arg = item
+        if name == "tray":
+            self.tray_command(arg)
+        elif name == "open":
+            self.show_app()
+        elif name == "status":
+            self.set_status(arg)
+        elif name == "close_for_update":
+            self.on_close()
+
+    # ----- saved layouts -----
+    def layout_names(self):
+        return [lay.get("name", "") for lay in self.cfg.get("layouts", [])]
+
+    def save_layout(self, name):
+        name = (name or "").strip()[:40]
+        if not name:
+            self.set_status("Give the layout a name first.")
+            return False
+        lay = {"name": name}
+        for k in LAYOUT_KEYS:
+            lay[k] = self.cfg.get(k)
+        lay["apps"] = [{"exe": r.get("exe", ""), "title": r.get("title", ""), "zone": r["zone"],
+                        "borderless": bool(r.get("borderless"))}
+                       for r in self.cfg.get("rules", []) if not r.get("auto")]
+        lays = [x for x in self.cfg["layouts"] if x.get("name", "").lower() != name.lower()]
+        existing = [i for i, x in enumerate(self.cfg["layouts"]) if x.get("name", "").lower() == name.lower()]
+        if existing:
+            lays.insert(existing[0], lay)          # keep its place (and hotkey number)
+        else:
+            lays.append(lay)
+        self.cfg["layouts"] = lays
+        self.cfg["active_layout"] = name
+        save_config(self.cfg)
+        n = self.layout_names().index(name) + 1
+        keys = hotkey_text(self.cfg, f"layout:{n}") if n <= 9 else ""
+        self.set_status(f"Saved layout \"{name}\"" + (f" - {keys} switches to it." if keys else "."))
+        return True
+
+    def apply_layout(self, name):
+        lay = next((x for x in self.cfg.get("layouts", []) if x.get("name") == name), None)
+        if not lay:
+            self.set_status("That layout doesn't exist any more.")
+            return False
+        for k in LAYOUT_KEYS:
+            if k in lay and lay[k] is not None:
+                self.cfg[k] = lay[k]
+        rules = self.cfg.setdefault("rules", [])
+        for app in lay.get("apps", []):
+            match = next((r for r in rules if rule_matches(r, app.get("exe", ""), app.get("title", ""))), None)
+            if match:
+                match["zone"], match["borderless"] = app["zone"], bool(app.get("borderless"))
+            else:
+                rules.append({"exe": app.get("exe", ""), "title": app.get("title", ""), "zone": app["zone"],
+                              "borderless": bool(app.get("borderless")), "lock_mouse": False})
+        self.cfg["active_layout"] = name
+        save_config(self.cfg)
+        self.last_apply.clear()
+        self.paused.clear()                    # everything moves to the new layout
+        self._apply_hist = {}                  # (moving everything again isn't "a game resizing itself")
+        self.layout_changed()
+        self.set_status(f"Switched to layout \"{name}\".")
+        return True
+
+    def delete_layout(self, name):
+        before = len(self.cfg.get("layouts", []))
+        self.cfg["layouts"] = [x for x in self.cfg.get("layouts", []) if x.get("name") != name]
+        if self.cfg.get("active_layout") == name:
+            self.cfg["active_layout"] = ""
+        save_config(self.cfg)
+        if len(self.cfg["layouts"]) < before:
+            self.set_status(f"Deleted layout \"{name}\".")
+        return True
+
+    def layout_changed(self):
+        """Hook: the class using this can refresh its screen."""
+
+    # ----- per-game game-area shape -----
+    def set_rule_ratio(self, index, preset):
+        rules = self.cfg.get("rules", [])
+        if not 0 <= index < len(rules):
+            return False
+        r = rules[index]
+        ratio = dict(PRESETS).get(preset)
+        if ratio:
+            r["game_ratio"] = ratio
+        else:
+            r.pop("game_ratio", None)
+        save_config(self.cfg)
+        self.game_override = None
+        self.last_apply.clear()
+        self._apply_hist = {}
+        app = r.get("exe") or r.get("title")
+        self.set_status(f"{app} now uses " + (f"its own game area ({preset.split('  ')[0]})." if ratio
+                                               else "the normal game area."))
+        return True
+
+    def rule_ratio_name(self, rule):
+        ratio = rule.get("game_ratio")
+        if not ratio:
+            return "Default"
+        return next((n for n, r in PRESETS if r and abs(r - ratio) < 1e-3), "Default")
+
+    def find_override(self):
+        """The shape of the game that's open now, if you gave that game its own."""
+        best = None
+        try:
+            fg = GetForegroundWindow()
+            for r in self.cfg.get("rules", []):
+                if r.get("zone") != "center" or not r.get("game_ratio"):
+                    continue
+                for w in self.windows.values():
+                    if rule_matches(r, w.exe or "", w.title) and IsWindow(w.hwnd) and not IsIconic(w.hwnd):
+                        if w.hwnd == fg or best is None:
+                            best = float(r["game_ratio"])
+        except Exception:
+            log_error()
+        return best
+
+    def effective_game_options(self):
+        opts = game_area_options(self.cfg)
+        if self.game_override:
+            opts["aspect"] = self.game_override
+            if not opts["height_pct"]:
+                opts["height_pct"] = 100
+        return opts
+
+    # ----- your other monitor -----
+    def other_monitor(self):
+        mons = self.monitors or []
+        if len(mons) < 2:
+            return None
+        main = mons[self.mon_idx]["device"] if mons else ""
+        others = [m for m in mons if m["device"] != main]
+        pick = next((m for m in others if m["device"] == self.cfg.get("other_monitor")), None)
+        return pick or next((m for m in others if m.get("primary")), None) or others[0]
+
+    def other_rect(self):
+        m = self.other_monitor()
+        if not m:
+            return (0, 0, 0, 0)
+        return tuple(m.get("work") or m["rect"])
+
+    # ----- play timer, reminder and Do Not Disturb -----
+    def current_game(self):
+        """The game sitting in the middle right now (a WinInfo), or None."""
+        try:
+            targets = [self.target_rect("center", True), self.target_rect("center", False)]
+            for w in self.windows.values():
+                if not IsWindow(w.hwnd) or IsIconic(w.hwnd):
+                    continue
+                r = visible_rect(w.hwnd)
+                if not any(all(abs(a - b) <= 8 for a, b in zip(r, t)) for t in targets):
+                    continue
+                if self.is_game_window(w.hwnd) or self.looks_like_game(w):
+                    return w
+        except Exception:
+            log_error()
+        return None
+
+    def gaming_tick(self):
+        try:
+            now = time.time()
+            ov = self.find_override()
+            if ov != self.game_override:
+                self.game_override = ov
+                self.last_apply.clear()
+                self._apply_hist = {}
+            g = self.current_game()
+            p = self.play
+            if g:
+                exe = (g.exe or g.title).lower()
+                if exe != p["exe"] or now - p["last"] > 300:       # a new session
+                    p.update(exe=exe, title=g.title, start=now, reminded=0)
+                p["last"], p["title"] = now, g.title
+                self.playing = True
+                if self.cfg.get("dnd_while_gaming", True):
+                    self.quiet.turn_on()
+                    if self.quiet.ours and not self.cfg.get("dnd_set_by_us"):
+                        self.cfg["dnd_set_by_us"] = True
+                        save_config(self.cfg)
+                remind = int(self.cfg.get("play_reminder_min") or 0)
+                if remind and (now - p["start"]) >= remind * 60 * (p["reminded"] + 1):
+                    p["reminded"] += 1
+                    msg = f"You've been playing {self.game_name(g)} for {fmt_duration(now - p['start'])}."
+                    self.set_status(msg + " Time for a break?")
+                    if getattr(self, "tray", None):
+                        self.tray.balloon("Time for a break?", msg)
+            else:
+                self.playing = False
+                if now - p["last"] > 10:
+                    self.quiet.turn_off()
+                    if self.cfg.get("dnd_set_by_us"):
+                        self.cfg["dnd_set_by_us"] = False
+                        save_config(self.cfg)
+        except Exception:
+            log_error()
+        if not getattr(self, "closing", False):
+            self.root.after(2000, self.gaming_tick)
+
+    def game_name(self, w):
+        name = (w.exe or "")[:-4] if (w.exe or "").lower().endswith(".exe") else (w.exe or "")
+        return (w.title or name)[:40]
+
+    def play_info(self):
+        p = self.play
+        if not p["start"] or time.time() - p["last"] > 300:
+            return None
+        return {"game": p["title"][:40], "seconds": int(p["last"] - p["start"]), "active": self.playing}
+
+    def features_close(self):
+        try:
+            self.quiet.turn_off()
+            if self.cfg.get("dnd_set_by_us"):
+                self.cfg["dnd_set_by_us"] = False
+                save_config(self.cfg)
+        except Exception:
+            log_error()
+
+    # ----- hotkeys -----
+    def hotkey_list(self):
+        failed = set(getattr(self.hotkeys, "failed", []) or [])
+        names = self.layout_names()
+        out = []
+        for action, label, _d in HOTKEY_ACTIONS:
+            if action.startswith("layout:"):
+                n = int(action.split(":")[1])
+                label = f"Switch to layout {n}" + (f" ({names[n - 1]})" if n <= len(names) else " (not saved yet)")
+            keys = hotkey_text(self.cfg, action)
+            out.append({"action": action, "label": label, "keys": keys, "failed": bool(keys) and keys in failed})
+        return out
+
+    def set_hotkey(self, action, text):
+        if action not in [a for a, _l, _d in HOTKEY_ACTIONS]:
+            return False
+        keys = format_hotkey(text) if text else ""
+        if text and not keys:
+            self.set_status("Use at least one of Ctrl / Alt / Shift / Win together with a key.")
+            return False
+        hk = self.cfg.setdefault("hotkeys", {})
+        if keys:
+            for other, _l, _d in HOTKEY_ACTIONS:      # the same keys can only do one thing
+                if other != action and hotkey_text(self.cfg, other) == keys:
+                    hk[other] = ""
+        hk[action] = keys
+        save_config(self.cfg)
+        self.restart_hotkeys()
+        if keys and keys in (self.hotkeys.failed or []):
+            self.set_status(f"{keys} is already used by another program - pick different keys.")
+        else:
+            what = dict((a, l) for a, l, _d in HOTKEY_ACTIONS)[action]
+            self.set_status(f"{keys} now does: {what[0].lower() + what[1:]}." if keys else "Shortcut turned off.")
+        return True
+
+    def reset_hotkeys(self):
+        self.cfg["hotkeys"] = {}
+        save_config(self.cfg)
+        self.restart_hotkeys()
+        self.set_status("Shortcuts are back to the defaults.")
+        return True
+
+    def restart_hotkeys(self):
+        old = getattr(self, "hotkeys", None)
+        if old:
+            old.stop()
+            old.join(1.5)
+        self.hotkeys = HotkeyThread(old.q if old else self.hotkey_queue(), hotkey_bindings(self.cfg))
+        self.hotkeys.start()
+        self.hotkeys.ready.wait(2)
+
+    def feature_hotkey(self, action):
+        """Hotkeys that aren't about the window you're in. True if handled."""
+        if action.startswith("layout:"):
+            n = int(action.split(":")[1])
+            names = self.layout_names()
+            if n <= len(names):
+                self.apply_layout(names[n - 1])
+            else:
+                self.set_status(f"There's no layout {n} yet - save one first.")
+            return True
+        if action == "open":
+            self.show_app()
+            return True
+        return False
+
+    # ----- tray menu -----
+    def tray_menu(self):
+        """Called on the tray's own thread: only reads settings."""
+        names = self.layout_names()
+        active = self.cfg.get("active_layout", "")
+        lays = [("item", "layout:" + n, n, n == active) for n in names] or \
+            [("item", "none", "No saved layouts yet", False, False)]
+        return [("item", "open", "Open " + self.tray.tip, False), ("sep",),
+                ("sub", "Layouts", lays), ("sep",),
+                ("item", "opt:game_on_top", "Keep the game above the taskbar", bool(self.cfg.get("game_on_top", True))),
+                ("item", "opt:auto_apply", "Place remembered apps automatically", bool(self.cfg.get("auto_apply", True))),
+                ("item", "opt:dnd_while_gaming", "Do Not Disturb while gaming", bool(self.cfg.get("dnd_while_gaming", True))),
+                ("sep",), ("item", "quit", "Quit " + self.tray.tip, False)]
+
+    def tray_command(self, key):
+        if key.startswith("layout:"):
+            self.apply_layout(key[7:])
+        elif key.startswith("opt:"):
+            opt = key[4:]
+            self.cfg[opt] = not self.cfg.get(opt, True)
+            save_config(self.cfg)
+            if opt == "game_on_top":
+                self.update_ontop()
+            elif opt == "dnd_while_gaming" and not self.cfg[opt]:
+                self.quiet.turn_off()
+            self.options_changed()
+
+    def options_changed(self):
+        """Hook: the class using this can refresh its check boxes."""
+
+    # ----- updates -----
+    def check_updates(self, manual=False):
+        if self.update_state in ("checking", "downloading"):
+            return
+
+        def work():
+            self.update_state = "checking"
+            try:
+                rel = json.loads(_http_get(f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"))
+                ver = rel.get("tag_name", "")
+                if _version_tuple(ver) > _version_tuple(APP_VERSION):
+                    self.update_info = {"version": ver.lstrip("vV"), "notes": (rel.get("body") or "")[:1500],
+                                        "assets": {a["name"]: a["browser_download_url"]
+                                                   for a in rel.get("assets", [])},
+                                        "page": rel.get("html_url", "")}
+                    if manual:
+                        self.post(("feature", "status", f"Version {self.update_info['version']} is available."))
+                else:
+                    self.update_info = None
+                    if manual:
+                        self.post(("feature", "status", f"You have the newest version ({APP_VERSION})."))
+            except Exception:
+                if manual:
+                    self.post(("feature", "status", "Couldn't check for updates (no internet?)."))
+            finally:
+                self.update_state = ""
+        threading.Thread(target=work, daemon=True).start()
+
+    def _update_tick(self):
+        if self.cfg.get("check_updates", True):
+            self.check_updates()
+        if not getattr(self, "closing", False):
+            self.root.after(6 * 3600 * 1000, self._update_tick)        # every 6 hours
+
+    def install_update(self):
+        info = self.update_info
+        if not info or self.update_state == "downloading":
+            return False
+        asset = UPDATE_EXE if FROZEN else UPDATE_ZIP
+        url = info["assets"].get(asset)
+        if not url:
+            self.set_status("That update doesn't have a download for this version yet - try again later.")
+            return False
+        self.update_state = "downloading"
+        self.set_status(f"Downloading version {info['version']}...")
+
+        def work():
+            try:
+                data = _http_get(url, timeout=120)
+                if FROZEN:
+                    self._install_exe(data)
+                else:
+                    self._install_files(data)
+                self.update_state = "installed"
+                run_log(f"update {APP_VERSION} -> {info['version']} installed")
+                self.post(("feature", "status", f"Version {info['version']} installed - restarting..."))
+                if FROZEN:
+                    self.post(("feature", "close_for_update", None))
+            except Exception:
+                log_error()
+                self.update_state = "failed"
+                self.post(("feature", "status", "The update didn't install - see g9_splitter_error.log."))
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    def _install_files(self, data):
+        """Running from the .pyw files: put the new files in place (the app restarts by itself)."""
+        import io
+        import zipfile
+        keep = ("g9_splitter_config.json",)
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            names = [n for n in z.namelist() if not n.endswith("/")]
+            prefix = os.path.commonprefix(names) if len(names) > 1 else ""
+            prefix = prefix[:prefix.rfind("/") + 1] if "/" in prefix else ""
+            for n in names:
+                rel = n[len(prefix):]
+                if not rel or rel.startswith(("..", "/")) or os.path.basename(rel) in keep or ".." in rel:
+                    continue
+                dest = os.path.join(APP_DIR, *rel.split("/"))
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                tmp = dest + ".new"
+                with open(tmp, "wb") as f:
+                    f.write(z.read(n))
+                os.replace(tmp, dest)
+
+    def _install_exe(self, data):
+        """Running as the .exe: it can't overwrite itself while running, so a tiny script swaps it
+        in once the app has closed, then starts the new one."""
+        import subprocess
+        exe = sys.executable
+        new = exe + ".new"
+        with open(new, "wb") as f:
+            f.write(data)
+        script = os.path.join(APP_DIR, "_g9_update.cmd")
+        with open(script, "w", encoding="utf-8") as f:
+            f.write("@echo off\r\n"
+                    f":wait\r\ntasklist /FI \"PID eq {os.getpid()}\" | find \"{os.getpid()}\" >nul && "
+                    "(timeout /t 1 /nobreak >nul & goto wait)\r\n"
+                    f"move /y \"{new}\" \"{exe}\" >nul\r\n"
+                    f"start \"\" \"{exe}\" --restarted\r\n"
+                    "del \"%~f0\"\r\n")
+        subprocess.Popen(["cmd", "/c", script], cwd=APP_DIR, creationflags=0x08000000 | 0x00000008)
+
+    def update_snapshot(self):
+        info = self.update_info
+        return {"current": APP_VERSION, "available": info["version"] if info else "",
+                "notes": info["notes"] if info else "", "state": self.update_state,
+                "check": bool(self.cfg.get("check_updates", True)), "exe": FROZEN}
+
+    # ----- first-run setup -----
+    def finish_setup(self, choices):
+        """choices: {"preset", "apps": {hwnd: "left"/"right"/"other"/""}, "startup", "dnd", "updates"}"""
+        cfg = self.cfg
+        if choices.get("monitor"):
+            for i, m in enumerate(self.monitors):
+                if m["device"] == choices["monitor"]:
+                    self.mon_idx = i
+                    cfg["monitor"] = m["device"]
+        ratio = dict(PRESETS).get(choices.get("preset") or "")
+        if ratio:
+            cfg["game_ratio"] = ratio
+            cfg["center_width"] = 0
+            cfg["game_height_pct"] = cfg.get("game_height_pct") or 100
+        for hwnd_s, zone in (choices.get("apps") or {}).items():
+            if zone not in ("left", "right", "other"):
+                continue
+            w = self.windows.get(int(hwnd_s))
+            if not w:
+                continue
+            rule = {"exe": w.exe, "title": "" if w.exe else w.title, "zone": zone, "borderless": False,
+                    "lock_mouse": False}
+            cfg["rules"] = [r for r in cfg["rules"] if not rule_matches(r, w.exe, w.title)] + [rule]
+        cfg["dnd_while_gaming"] = bool(choices.get("dnd", True))
+        cfg["check_updates"] = bool(choices.get("updates", True))
+        cfg["setup_done"] = True
+        save_config(cfg)
+        self.last_apply.clear()
+        if "startup" in choices and bool(choices["startup"]) != bool(getattr(self, "startup_on", False)):
+            self.set_startup_choice(bool(choices["startup"]))
+        self.set_status("All set! Open a game and it goes in the middle - your apps go to the sides.")
+        return True
 
 
 class GameDetector:
@@ -2136,10 +2951,13 @@ class FpsMonitor:
         return 1000.0 / avg, avg
 
 
-class Engine:
+class Engine(FeaturesMixin):
+    game_override = None
+
     def __init__(self, root):
         self.root = root
         root.withdraw()
+        config_existed = os.path.exists(CONFIG_PATH)
         self.cfg = load_config()
         if self.cfg.get("theme") == "Destiny 2 style (modern)":   # now just "Destiny 2 style"
             self.cfg["theme"] = "Destiny 2 style"
@@ -2194,11 +3012,12 @@ class Engine:
         self.refresh_windows()
         self.update_zone_contents()
 
-        self.hotkeys = HotkeyThread(self.q)
+        self.hotkeys = HotkeyThread(self.q, hotkey_bindings(self.cfg))
         self.hotkeys.start()
         self.hotkeys.ready.wait(2)
         if self.hotkeys.failed:
             self.set_status("These hotkeys are used by another program: " + ", ".join(self.hotkeys.failed))
+        self.features_init(config_existed)
         self.build_snapshot()
 
         root.after(25, self.poll_queue)
@@ -2207,6 +3026,25 @@ class Engine:
         root.after(200, self.ontop_tick)
         root.after(1000, self.windows_tick)
         root.after(700, self.fps_tick)
+
+    # ---------------- what the shared features need from the engine ----------------
+    def post(self, item):
+        self.q.put(item)
+
+    def show_app(self):
+        self.open_ui()
+
+    def hotkey_queue(self):
+        return self.q
+
+    def set_startup_choice(self, on):
+        self.set_startup(on)
+
+    def layout_changed(self):
+        self.build_snapshot()
+
+    def options_changed(self):
+        self.build_snapshot()
 
     # ---------------- status / snapshot for the interface ----------------
     def set_status(self, text):
@@ -2230,8 +3068,11 @@ class Engine:
         ga = game_area_options(self.cfg)
         wins = []
         for w in self.windows.values():
+            vol = self.mixer.volume_of(w.exe)
             wins.append({"hwnd": str(w.hwnd), "title": w.title, "exe": w.exe or "",
                          "muted": self.mixer.is_muted(w.exe), "ignored": self.is_ignored(w.exe),
+                         "volume": None if vol is None else round(vol, 3),
+                         "is_game": bool(self.looks_like_game(w)),
                          "zone": self.zone_of.get(w.hwnd),
                          "borderless": self.zone_of.get(w.hwnd) == "center" and self.is_game_window(w.hwnd)})
             if wins[-1]["zone"] == "center":     # is a game sitting in the middle? (labels it GAME vs Middle)
@@ -2241,7 +3082,8 @@ class Engine:
             rules.append({"index": i, "app": r.get("exe") or r.get("title", ""),
                           "where": zone_choice_label(r["zone"], r.get("borderless"))
                           + (" · auto-detected game" if r.get("auto") else ""),
-                          "zone": r["zone"], "lock_mouse": bool(r.get("lock_mouse"))})
+                          "zone": r["zone"], "lock_mouse": bool(r.get("lock_mouse")),
+                          "game": r["zone"] == "center", "ratio": self.rule_ratio_name(r)})
         snap = {
             "status": self.status, "status_id": self.status_id,
             "theme": self.cfg["theme"], "is_admin": self.is_admin,
@@ -2260,12 +3102,29 @@ class Engine:
             "layout_choices": {"heights": HEIGHT_CHOICES, "positions": POSITION_CHOICES,
                                "valigns": VALIGN_CHOICES, "new_game": NEW_GAME_CHOICES},
             "windows": wins, "rules": rules, "ignored": list(self.cfg.get("ignored", [])),
-            "zone_choices": [c[0] for c in ZONE_CHOICES],
+            "zone_choices": [c[0] for c in ZONE_CHOICES if c[1] != "other" or self.other_monitor()],
             "options": {"game_on_top": self.ontop_on, "auto_apply": self.auto_on,
                         "fps_overlay": bool(self.cfg.get("fps_overlay")),
                         "auto_detect_games": bool(self.cfg.get("auto_detect_games", True))},
             "hotkeys_failed": self.hotkeys.failed if hasattr(self, "hotkeys") else [],
         }
+        other = self.other_monitor()
+        snap.update({
+            "version": APP_VERSION,
+            "layouts": self.layout_names(), "active_layout": self.cfg.get("active_layout", ""),
+            "hotkeys": self.hotkey_list(),
+            "play": self.play_info(),
+            "update": self.update_snapshot(),
+            "setup_needed": not self.cfg.get("setup_done", True),
+            "other": {"device": other["device"], "label": self.monitor_label(other),
+                      "rect": list(self.other_rect())} if other else None,
+            "game_shape_override": aspect_name(cw, ch) if self.game_override else "",
+            "reminder_choices": [[m, t] for m, t in REMINDER_CHOICES],
+        })
+        snap["options"].update({"dnd_while_gaming": bool(self.cfg.get("dnd_while_gaming", True)),
+                                "play_reminder_min": int(self.cfg.get("play_reminder_min") or 0),
+                                "check_updates": bool(self.cfg.get("check_updates", True)),
+                                "other_monitor": self.cfg.get("other_monitor", "")})
         with self.snap_lock:
             self.snapshot_json = json.dumps(snap)
 
@@ -2306,6 +3165,9 @@ class Engine:
                         ev.set()
                     elif isinstance(item, tuple) and item[0] == "foreground":
                         self.update_ontop()
+                    elif isinstance(item, tuple) and item[0] == "feature":
+                        self.feature_event(item)
+                        self.build_snapshot()
                     elif item == "quit":
                         self.on_close()
                         return
@@ -2398,8 +3260,17 @@ class Engine:
             if key == "fps_overlay":
                 self.toggle_fps(bool(val))
                 return True
-            if key in ("game_on_top", "auto_apply", "auto_detect_games"):
+            if key in ("game_on_top", "auto_apply", "auto_detect_games", "dnd_while_gaming", "check_updates"):
                 self.cfg[key] = bool(val)
+                if key == "dnd_while_gaming" and not val:
+                    self.quiet.turn_off()
+                if key == "check_updates" and val:
+                    self.check_updates()
+            elif key == "play_reminder_min":
+                self.cfg[key] = int(val) if int(val) in dict(REMINDER_CHOICES) else 0
+            elif key == "other_monitor":
+                self.cfg[key] = str(val)
+                self.last_apply.clear()
             elif key == "theme" and val in THEMES:
                 self.cfg["theme"] = val
             save_config(self.cfg)
@@ -2454,12 +3325,59 @@ class Engine:
 
             def work():
                 ok = _quiet(make_shortcut, "desktop")
-                self.root.after(0, lambda: (self.set_status(
-                    "Added 'G9 Splitter 2' to your desktop." if ok else "Couldn't create the desktop shortcut."),
-                    self.build_snapshot()))
+                self.post(("feature", "status", "Added 'G9 Splitter 2' to your desktop." if ok
+                           else "Couldn't create the desktop shortcut."))
             threading.Thread(target=work, daemon=True).start()
         elif action == "restart_admin":
             self.restart_as_admin()
+        elif action == "save_layout":
+            return self.save_layout(a.get("name", ""))
+        elif action == "apply_layout":
+            return self.apply_layout(a.get("name", ""))
+        elif action == "delete_layout":
+            return self.delete_layout(a.get("name", ""))
+        elif action == "set_rule_ratio":
+            return self.set_rule_ratio(int(a["index"]), a.get("preset", ""))
+        elif action == "set_volume":
+            w = self.windows.get(hwnd)
+            if not w or not w.exe:
+                return False
+            n = self.mixer.set_volume(w.exe, float(a.get("level", 1)))
+            if n is None:
+                self.set_status("Couldn't reach Windows' volume mixer.")
+                return False
+            if not n:
+                self.set_status(f"{w.exe[:-4] if w.exe.lower().endswith('.exe') else w.exe} isn't making "
+                                "sound right now - set its volume when it plays something.")
+        elif action == "set_hotkey":
+            return self.set_hotkey(a.get("action", ""), a.get("keys", ""))
+        elif action == "reset_hotkeys":
+            return self.reset_hotkeys()
+        elif action == "check_updates":
+            self.check_updates(manual=True)
+            self.set_status("Checking for updates...")
+        elif action == "install_update":
+            return self.install_update()
+        elif action == "finish_setup":
+            return self.finish_setup(a.get("choices") or {})
+        elif action == "run_setup":
+            self.cfg["setup_done"] = False
+            save_config(self.cfg)
+        elif action == "skip_setup":
+            self.cfg["setup_done"] = True
+            save_config(self.cfg)
+        elif action == "pause_hotkeys":
+            # while you press new keys for a shortcut, the old ones mustn't fire
+            if a.get("on"):
+                self.hotkeys.stop()
+                if getattr(self, "_hk_resume", None):
+                    self.root.after_cancel(self._hk_resume)
+                self._hk_resume = self.root.after(30000, self.restart_hotkeys)    # just in case
+            else:
+                if getattr(self, "_hk_resume", None):
+                    self.root.after_cancel(self._hk_resume)
+                    self._hk_resume = None
+                self.restart_hotkeys()
         elif action == "status":
             self.set_status(str(a.get("text", ""))[:200])
         else:
@@ -2516,7 +3434,7 @@ class Engine:
     def zones(self):
         work = self.monitors[self.mon_idx].get("work") if self.monitors else None
         return compute_zones(self.mon_rect(), int(self.cfg.get("center_width", 0)),
-                             int(self.cfg.get("center_height", 0)), work, **game_area_options(self.cfg))
+                             int(self.cfg.get("center_height", 0)), work, **self.effective_game_options())
 
     # ---------------- game-area & game options ----------------
     def set_game_shape(self, ratio):
@@ -2569,6 +3487,8 @@ class Engine:
     def target_rect(self, zone, borderless):
         """Where a window really goes. A borderless game in the middle covers the
         taskbar; a normal window in the middle stops just above it, like the sides."""
+        if zone == "other":
+            return self.other_rect()
         z = self.zones()[zone]
         if zone == "center" and not borderless:
             work = self.monitors[self.mon_idx].get("work") if self.monitors else None
@@ -2795,6 +3715,8 @@ class Engine:
 
     # ---------------- hotkeys ----------------
     def handle_hotkey(self, action):
+        if self.feature_hotkey(action):
+            return
         if action == "fps":
             self.toggle_fps()
             return
@@ -2806,6 +3728,11 @@ class Engine:
             self.place(hwnd, "center", self.looks_like_game(self.win_info(hwnd)))
         elif action in ("left", "right"):
             self.place(hwnd, action, False)
+        elif action == "other":
+            if self.other_monitor():
+                self.place(hwnd, "other", False)
+            else:
+                self.set_status("There's no other monitor connected.")
         elif action == "restore":
             self.restore(hwnd)
         elif action == "lock":
@@ -2814,7 +3741,9 @@ class Engine:
                 self.set_status("Mouse unlocked.")
             else:
                 self.lock_hwnd = hwnd
-                self.set_status(f"Mouse locked to \"{window_title(hwnd)[:50]}\" (Ctrl+Alt+L to unlock).")
+                keys = hotkey_text(self.cfg, "lock")
+                self.set_status(f"Mouse locked to \"{window_title(hwnd)[:50]}\""
+                                + (f" ({keys} to unlock)." if keys else "."))
 
     # ---------------- remembered apps ----------------
     def needs_apply(self, hwnd, target, borderless):
@@ -2996,6 +3925,10 @@ class Engine:
                     if name == "center" and self.is_game_window(w.hwnd):
                         self.ontop.add(w.hwnd)
                     break
+            else:
+                o = self.other_rect()
+                if o[2] > 0 and all(abs(a - b) <= 6 for a, b in zip(r, o)):
+                    zone_of[w.hwnd] = "other"
         self.zone_of = zone_of
 
     def windows_tick(self):
@@ -3051,7 +3984,7 @@ class Engine:
                               "It's here in the tray. Click the icon to open it, right-click to quit.")
 
     def restart_as_admin(self):
-        r = ShellExecuteW(None, "runas", pythonw_path(), f'"{os.path.abspath(__file__)}" --restarted',
+        r = ShellExecuteW(None, "runas", pythonw_path(), (script_arg() + " --restarted").strip(),
                           APP_DIR, 1)
         if r and r > 32:
             self.root.after(100, self.on_close)
@@ -3303,6 +4236,7 @@ class Engine:
             return
         self.closing = True
         run_log("closing: " + "".join(traceback.format_stack(limit=4)[:-1]).replace("\n", " | ")[-600:])
+        self.features_close()
         try:
             self.fps_shutdown()
             ClipCursor(None)
@@ -3465,8 +4399,9 @@ class UILauncher:
         # 1) Preferred: our own app window (pywebview + Edge WebView2).
         try:
             started = time.time()
-            self.proc = subprocess.Popen([pythonw_path(), UI_HOST, self.url + "&host=webview", ICON_ICO],
-                                         cwd=APP_DIR)
+            cmd = ([sys.executable, "--ui-host"] if FROZEN else [pythonw_path(), UI_HOST]) + \
+                [self.url + "&host=webview", ICON_ICO]
+            self.proc = subprocess.Popen(cmd, cwd=APP_DIR)
             self.engine.ui_pids.add(self.proc.pid)
             code = self.proc.wait()
             if code == 0 or time.time() - started > 15:
@@ -3535,9 +4470,9 @@ def make_shortcut(where):
         dest = q(os.path.join(APP_DIR, SHORTCUT_NAME))
     ps = (f"$s=(New-Object -ComObject WScript.Shell).CreateShortcut({dest});"
           f"$s.TargetPath={q(pythonw_path())};"
-          f"$s.Arguments={q(chr(34) + os.path.abspath(__file__) + chr(34))};"
+          f"$s.Arguments={q(script_arg())};"
           f"$s.WorkingDirectory={q(APP_DIR)};"
-          f"$s.IconLocation={q(ICON_ICO + ',0')};"
+          f"$s.IconLocation={q(SHELL_ICON + ',0')};"
           f"$s.Description='G9 Splitter 2 - Left | Game | Right';$s.Save()")
     r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
                        capture_output=True, creationflags=0x08000000, timeout=30)
@@ -3619,6 +4554,11 @@ def main():
     if sys.platform != "win32":
         print("G9 Splitter only runs on Windows.")
         return
+    if "--ui-host" in sys.argv:          # the .exe showing its interface window
+        import ui_host
+        sys.argv = [sys.argv[0]] + sys.argv[sys.argv.index("--ui-host") + 1:]
+        ui_host.main()
+        return
     start_crash_log()
     run_log("start " + " ".join(sys.argv[1:]))
     import secrets
@@ -3647,17 +4587,19 @@ def main():
         tray = None
         try:      # icon next to the clock: click = open, right-click = Open / Quit
             tray = TrayIcon("G9 Splitter 2", ICON_ICO, open_label="Open G9 Splitter 2",
-                            on_open=lambda: root.after(0, engine.open_ui),
-                            on_quit=lambda: root.after(0, engine.on_close))
+                            on_open=lambda: engine.post(("feature", "open", None)),
+                            on_quit=lambda: engine.post("quit"),
+                            menu=engine.tray_menu, on_menu=lambda key: engine.post(("feature", "tray", key)))
         except Exception:
             log_error()
         engine.tray = tray
         engine.on_quit = lambda: (ui.stop(), srv.shutdown(), tray and tray.remove())
         if not (tray and tray.ok and "--tray" in sys.argv):   # started with Windows: stay in the tray
             ui.start()
-        engine.updater = SelfUpdater(root, [__file__, UI_HOST] + [os.path.join(WEB_DIR, n) for n in
-                                     ("index.html", "app.js", "style.css")], engine.on_close,
-                                     extra_args=lambda: [] if ui.is_open() else ["--tray"])
+        if not FROZEN:      # (the .exe updates itself through the update check instead)
+            engine.updater = SelfUpdater(root, [__file__, UI_HOST] + [os.path.join(WEB_DIR, n) for n in
+                                         ("index.html", "app.js", "style.css")], engine.on_close,
+                                         extra_args=lambda: [] if ui.is_open() else ["--tray"])
         if os.path.exists(ICON_ICO) and not os.path.exists(os.path.join(APP_DIR, SHORTCUT_NAME)):
             threading.Thread(target=lambda: _quiet(make_shortcut, "folder"), daemon=True).start()
     except Exception:
