@@ -1,0 +1,105 @@
+# Builds G9-Splitter-2.exe and G9-Splitter-Classic.exe on Windows and publishes them as a
+# GitHub release whenever APP_VERSION in the code changes. The apps check these releases
+# for updates.
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "G9-Splitter-2/**"
+      - "classic/**"
+      - "RELEASE_NOTES.md"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip pyinstaller pywebview
+
+      - name: Read the version
+        id: ver
+        shell: bash
+        run: |
+          v=$(python -c "import re; s=open('G9-Splitter-2/g9_splitter.pyw', encoding='utf-8').read(); print(re.search(r'APP_VERSION = \"([^\"]+)\"', s).group(1))")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Version $v"
+
+      - name: Build G9-Splitter-2.exe
+        shell: bash
+        run: |
+          mkdir -p build2
+          cp G9-Splitter-2/g9_splitter.pyw build2/g9_splitter2.py
+          cp G9-Splitter-2/ui_host.pyw build2/ui_host.py
+          pyinstaller --noconfirm --onefile --windowed --name "G9-Splitter-2" \
+            --icon "G9-Splitter-2/g9_splitter.ico" \
+            --add-data "G9-Splitter-2/web;web" \
+            --add-data "G9-Splitter-2/g9_splitter.ico;." \
+            --add-data "G9-Splitter-2/g9_splitter.png;." \
+            --paths build2 --hidden-import ui_host --collect-all webview \
+            build2/g9_splitter2.py
+
+      - name: Build G9-Splitter-Classic.exe
+        shell: bash
+        run: |
+          mkdir -p build1
+          cp classic/g9_splitter.pyw build1/g9_splitter_classic.py
+          pyinstaller --noconfirm --onefile --windowed --name "G9-Splitter-Classic" \
+            --icon "classic/g9_splitter.ico" \
+            --add-data "classic/g9_splitter.ico;." \
+            --add-data "classic/g9_splitter.png;." \
+            build1/g9_splitter_classic.py
+
+      - name: Check the .exe files start
+        shell: pwsh
+        run: |
+          foreach ($exe in "dist/G9-Splitter-2.exe", "dist/G9-Splitter-Classic.exe") {
+            if (-not (Test-Path $exe)) { throw "$exe was not built" }
+            "{0}: {1:N1} MB" -f $exe, ((Get-Item $exe).Length / 1MB)
+          }
+
+      - name: Source zips (for the update check of the .pyw version)
+        shell: bash
+        run: |
+          python - <<'EOF'
+          import os, zipfile
+          for folder, name in (("G9-Splitter-2", "G9-Splitter-2.zip"), ("classic", "G9-Splitter-Classic.zip")):
+              with zipfile.ZipFile(name, "w", zipfile.ZIP_DEFLATED) as z:
+                  for root, _dirs, files in os.walk(folder):
+                      for f in files:
+                          p = os.path.join(root, f)
+                          z.write(p, os.path.relpath(p, folder).replace(os.sep, "/"))
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: G9-Splitter-${{ steps.ver.outputs.version }}
+          path: |
+            dist/*.exe
+            *.zip
+
+      - name: Publish the release (only for a new version)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ steps.ver.outputs.version }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag is already released - nothing to publish."
+            exit 0
+          fi
+          gh release create "$tag" dist/G9-Splitter-2.exe dist/G9-Splitter-Classic.exe \
+            G9-Splitter-2.zip G9-Splitter-Classic.zip \
+            --title "G9 Splitter $tag" --notes-file RELEASE_NOTES.md
