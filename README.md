@@ -17,17 +17,27 @@ Turn one super-ultrawide monitor (like the 49" Samsung Odyssey G9) into **three 
   - height as a percentage of the monitor
   - left, middle or right position, and top, centre or bottom alignment
   - the preview takes the shape of your monitor
-- **Per-app mute** from the window list. It uses Windows' own volume mixer.
+- **Saved layouts.** Save the game area and where your apps go, then switch in one click, from the tray icon or with a shortcut (Ctrl+Alt+Shift+1…9).
+- **Per-game sizes.** Give a game its own game area (say 21:9 for one game, 16:9 for another); the side screens follow.
+- **Your other monitor** is a drop target too: a window dropped there fills that screen.
+- **Per-app mute and volume** from the window list. It uses Windows' own volume mixer.
+- **Do Not Disturb while gaming.** Windows' Do Not Disturb turns on while a game is in the middle and off again afterwards.
+- **Play timer** with an optional break reminder.
 - **FPS counter** on the game. It uses Intel PresentMon and reads Windows' frame timing, so nothing is injected into the game.
 - **Mouse lock** keeps the mouse inside the game.
-- **Hotkeys** for everything (see below).
+- **Hotkeys** for everything, and you can change them all in Settings → Shortcuts.
 - **6 themes:** Light, Dark, and fan-made styles inspired by Overwatch, Destiny 2, No Man's Sky and Cyberpunk 2077.
-- **Tray icon** and fast start with Windows (straight into the tray).
-- **Installs its own updates:** when new files are copied into the app's folder, it restarts itself with the new version.
+- **Tray icon** with a menu (layouts and the main switches) and fast start with Windows (straight into the tray).
+- **Updates itself.** It checks this page for new releases and installs them in one click.
+- **First-run setup** that asks for your monitor, game size and where your apps go.
 
 ![Themes](docs/themes.png)
 
 ## Download and run
+
+**Easiest:** download **`G9-Splitter-2.exe`** from the [latest release](https://github.com/IRONHUNTERow/G9-Splitter/releases/latest), put it in its own folder and run it. Nothing else to install. (`G9-Splitter-Classic.exe` is the classic version.) Windows may show a SmartScreen warning the first time because the .exe isn't signed: click **More info → Run anyway**.
+
+**From the source files:**
 
 1. Click **Code → Download ZIP** above and unzip it anywhere.
 2. Open the **G9-Splitter-2** folder and double-click **`Start G9 Splitter 2.bat`**.
@@ -51,6 +61,11 @@ On the first start it installs Python 3.12 (free, via winget) and pywebview (the
 | Ctrl+Alt+↓ | Back to a normal window |
 | Ctrl+Alt+L | Lock / unlock the mouse to the current window |
 | Ctrl+Alt+F | FPS counter on / off |
+| Ctrl+Alt+PageDown | Current window to your other monitor |
+| Ctrl+Alt+G | Open G9 Splitter |
+| Ctrl+Alt+Shift+1…9 | Switch to saved layout 1…9 |
+
+All of them can be changed in **Settings → Shortcuts**.
 
 ## Classic version
 
@@ -58,7 +73,7 @@ The **classic** folder has the original, simpler version (a plain Windows window
 
 ## Privacy
 
-Everything runs on your PC. There is no account and no telemetry. Settings are saved in `g9_splitter_config.json` next to the app. The only download is Intel's free PresentMon tool, the first time you turn on the FPS counter.
+Everything runs on your PC. There is no account and no telemetry. Settings are saved in `g9_splitter_config.json` next to the app. The only downloads are Intel's free PresentMon tool (the first time you turn on the FPS counter) and the update check, which asks this GitHub page for the newest release (you can turn it off in Settings).
 
 ## Notes
 
